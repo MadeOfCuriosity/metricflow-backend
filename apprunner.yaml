@@ -4,10 +4,9 @@ runtime: python311
 build:
   commands:
     pre-build:
-      - yum install -y gcc python3-devel postgresql-devel
-      - pip install --upgrade pip
+      - pip install --upgrade pip setuptools wheel
     build:
-      - pip install -r requirements.txt
+      - pip install --only-binary :all: -r requirements.txt
 
 run:
   command: sh -c "python -c 'from alembic.config import Config; from alembic import command; cfg = Config(\"alembic.ini\"); command.upgrade(cfg, \"head\")' && uvicorn main:app --host 0.0.0.0 --port 8000"
