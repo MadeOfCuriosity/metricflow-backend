@@ -1,0 +1,23 @@
+version: 1.0
+runtime: python311
+
+build:
+  commands:
+    pre-build:
+      - echo "Installing system dependencies..."
+    build:
+      - pip install -r requirements.txt
+
+run:
+  command: sh -c "python -c 'from alembic.config import Config; from alembic import command; cfg = Config(\"alembic.ini\"); command.upgrade(cfg, \"head\")' && uvicorn main:app --host 0.0.0.0 --port 8000"
+  network:
+    port: 8000
+    env: APP_PORT
+  env:
+    - name: ENVIRONMENT
+      value: "production"
+  secrets:
+    - name: DATABASE_URL
+      value-from: "arn:aws:secretsmanager:REGION:ACCOUNT:secret:metricflow/database-url"
+    - name: SECRET_KEY
+      value-from: "arn:aws:secretsmanager:REGION:ACCOUNT:secret:metricflow/jwt-secret"
