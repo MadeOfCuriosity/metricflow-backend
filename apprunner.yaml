@@ -3,16 +3,13 @@ runtime: python311
 
 build:
   commands:
-    pre-build:
-      - pip install --upgrade pip setuptools wheel
     build:
-      - pip install --only-binary :all: -r requirements.txt
+      - pip install -r requirements.txt
 
 run:
-  command: sh -c "python -c 'from alembic.config import Config; from alembic import command; cfg = Config(\"alembic.ini\"); command.upgrade(cfg, \"head\")' && uvicorn main:app --host 0.0.0.0 --port 8000"
+  command: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
   network:
     port: 8000
-    env: APP_PORT
   env:
     - name: ENVIRONMENT
       value: "production"
