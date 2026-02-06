@@ -4,7 +4,8 @@ runtime: python311
 build:
   commands:
     pre-build:
-      - echo "Installing system dependencies..."
+      - yum install -y gcc python3-devel postgresql-devel
+      - pip install --upgrade pip
     build:
       - pip install -r requirements.txt
 
