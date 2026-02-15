@@ -3,13 +3,9 @@ AI service for KPI building assistance using Google Gemini API.
 """
 import re
 from dataclasses import dataclass
-from datetime import datetime, date
 from typing import Optional
-from uuid import UUID
 
 import httpx
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 from app.core.config import settings
 from app.core.formula_parser import validate_formula
@@ -82,42 +78,6 @@ class ConversationMessage:
     """A message in the conversation history."""
     role: str  # "user" or "assistant"
     content: str
-
-
-class AIRateLimiter:
-    """Simple rate limiter for AI API calls."""
-
-    @staticmethod
-    def get_usage_count(db: Session, org_id: UUID, today: Optional[date] = None) -> int:
-        """Get the number of AI calls made by an org today."""
-        from app.models import Organization
-
-        if today is None:
-            today = date.today()
-
-        # We'll store usage in a simple way using the Insight model's generated_at
-        # For production, you'd want a dedicated AIUsage table
-        # For now, we'll use a simple in-memory approach or cache
-
-        # Check if we have a rate limit tracking mechanism
-        # Using organization metadata or a dedicated table would be better
-        # For simplicity, we'll allow the rate limit to be tracked externally
-        return 0  # Placeholder - implement with Redis or DB table
-
-    @staticmethod
-    def check_rate_limit(db: Session, org_id: UUID) -> tuple[bool, int]:
-        """
-        Check if org is within rate limit.
-
-        Returns:
-            Tuple of (is_allowed, remaining_calls)
-        """
-        # For MVP, we'll implement a simple check
-        # In production, use Redis or a dedicated table
-        limit = settings.AI_RATE_LIMIT_PER_DAY
-        current_usage = AIRateLimiter.get_usage_count(db, org_id)
-        remaining = max(0, limit - current_usage)
-        return current_usage < limit, remaining
 
 
 class AIService:

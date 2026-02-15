@@ -6,7 +6,7 @@ from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, and_
 
 from app.models import DataField, DataFieldEntry, KPIDataField, Room, UserRoomAssignment
 from app.models.data_field import DataField as DataFieldModel
@@ -87,11 +87,18 @@ class DataFieldService:
             ).all()
             assigned_ids = [a.room_id for a in assignments]
 
-            # Include sub-rooms
-            sub_rooms = db.query(Room.id).filter(
-                Room.parent_room_id.in_(assigned_ids)
-            ).all()
-            all_room_ids = assigned_ids + [s.id for s in sub_rooms]
+            # Recursively include all descendant sub-rooms (not just one level)
+            all_room_ids = list(assigned_ids)
+            parent_ids = assigned_ids
+            while parent_ids:
+                sub_rooms = db.query(Room.id).filter(
+                    Room.parent_room_id.in_(parent_ids)
+                ).all()
+                child_ids = [s.id for s in sub_rooms]
+                if not child_ids:
+                    break
+                all_room_ids.extend(child_ids)
+                parent_ids = child_ids
 
             # Filter to accessible rooms + unassigned (room_id is NULL)
             from sqlalchemy import or_
@@ -283,8 +290,46 @@ class DataFieldService:
         """
         Enrich data fields with room_name, room_path, kpi_count, and latest_value.
         Returns list of dicts ready for DataFieldResponse.
+        Uses batch queries to avoid N+1 problems.
         """
         from app.services.room_service import RoomService
+
+        if not fields:
+            return []
+
+        field_ids = [f.id for f in fields]
+
+        # Batch: get KPI counts for all fields in one query
+        kpi_counts_query = (
+            db.query(KPIDataField.data_field_id, func.count(KPIDataField.id))
+            .filter(KPIDataField.data_field_id.in_(field_ids))
+            .group_by(KPIDataField.data_field_id)
+            .all()
+        )
+        kpi_count_map = dict(kpi_counts_query)
+
+        # Batch: get latest entries for all fields in one query using a subquery
+        latest_subq = (
+            db.query(
+                DataFieldEntry.data_field_id,
+                func.max(DataFieldEntry.date).label("max_date"),
+            )
+            .filter(DataFieldEntry.data_field_id.in_(field_ids))
+            .group_by(DataFieldEntry.data_field_id)
+            .subquery()
+        )
+        latest_entries = (
+            db.query(DataFieldEntry)
+            .join(
+                latest_subq,
+                and_(
+                    DataFieldEntry.data_field_id == latest_subq.c.data_field_id,
+                    DataFieldEntry.date == latest_subq.c.max_date,
+                ),
+            )
+            .all()
+        )
+        latest_entry_map = {e.data_field_id: e for e in latest_entries}
 
         result = []
         for field in fields:
@@ -295,8 +340,8 @@ class DataFieldService:
                 path_parts = [a.name for a in ancestors] + [field.room.name]
                 room_path = " > ".join(path_parts)
 
-            kpi_count = DataFieldService.get_kpi_count(db, field.id)
-            latest_entry = DataFieldService.get_latest_entry(db, field.id)
+            kpi_count = kpi_count_map.get(field.id, 0)
+            latest_entry = latest_entry_map.get(field.id)
 
             result.append({
                 "id": field.id,

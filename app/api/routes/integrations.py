@@ -268,7 +268,7 @@ def get_oauth_authorize_url(
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found")
 
-    state = IntegrationService.generate_oauth_state(integration.id)
+    state = IntegrationService.generate_oauth_state(db, integration.id)
 
     if provider == "google_sheets":
         if not settings.GOOGLE_OAUTH_CLIENT_ID:
@@ -303,6 +303,10 @@ def oauth_callback(
     integration_id, csrf_token = IntegrationService.parse_oauth_state(state)
     if not integration_id:
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
+
+    # Validate CSRF token to prevent state forgery
+    if not IntegrationService.validate_oauth_state(db, integration_id, csrf_token):
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
 
     from app.models.integration import Integration as IntegrationModel
     integration = db.query(IntegrationModel).filter(

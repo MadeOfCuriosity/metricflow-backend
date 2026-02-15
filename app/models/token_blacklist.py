@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, DateTime, Index
+from sqlalchemy import Column, String, Boolean, DateTime, Index
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -37,7 +37,7 @@ class RefreshToken(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     rotated_at = Column(DateTime(timezone=True), nullable=True)
-    is_revoked = Column(String(1), default="N")  # 'Y' or 'N'
+    is_revoked = Column(Boolean, default=False, nullable=False, server_default="false")
 
     __table_args__ = (
         Index("ix_refresh_tokens_user_id_revoked", "user_id", "is_revoked"),

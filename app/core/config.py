@@ -35,6 +35,18 @@ class Settings(BaseSettings):
     # Encryption key for OAuth tokens / API keys (Fernet key)
     ENCRYPTION_KEY: str = ""
 
+    def validate_required_secrets(self) -> list[str]:
+        """Validate that critical secrets are set. Returns list of errors."""
+        errors = []
+        if not self.SECRET_KEY or len(self.SECRET_KEY) < 16:
+            errors.append("SECRET_KEY must be set and at least 16 characters")
+        if not self.DATABASE_URL:
+            errors.append("DATABASE_URL must be set")
+        if self.ENVIRONMENT == "production":
+            if not self.ENCRYPTION_KEY:
+                errors.append("ENCRYPTION_KEY must be set in production")
+        return errors
+
     # Google Sheets OAuth
     GOOGLE_OAUTH_CLIENT_ID: Optional[str] = None
     GOOGLE_OAUTH_CLIENT_SECRET: Optional[str] = None

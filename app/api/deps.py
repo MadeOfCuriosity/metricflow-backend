@@ -7,7 +7,7 @@ from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.core.security import verify_token
+from app.core.security import verify_token, is_token_blacklisted
 from app.models import User, Organization, UserRoomAssignment
 from app.models.room import Room
 
@@ -43,6 +43,11 @@ def get_current_user(
     payload = verify_token(token)
 
     if payload is None:
+        raise credentials_exception
+
+    # Check if token has been blacklisted (logged out)
+    jti = payload.get("jti")
+    if jti and is_token_blacklisted(db, jti):
         raise credentials_exception
 
     user_id: str = payload.get("sub")
@@ -134,15 +139,16 @@ def check_room_access(
     if assignment:
         return True
 
-    # Check if this room is a sub-room of an assigned room
+    # Walk up the room tree to check if any ancestor is assigned
     room = db.query(Room).filter(Room.id == room_id).first()
-    if room and room.parent_room_id:
+    while room and room.parent_room_id:
         parent_assignment = db.query(UserRoomAssignment).filter(
             UserRoomAssignment.user_id == current_user.id,
             UserRoomAssignment.room_id == room.parent_room_id
         ).first()
         if parent_assignment:
             return True
+        room = db.query(Room).filter(Room.id == room.parent_room_id).first()
 
     return False
 
@@ -165,9 +171,17 @@ def get_user_accessible_room_ids(
 
     assigned_ids = [a.room_id for a in assignments]
 
-    # Also include sub-rooms of assigned rooms
-    sub_rooms = db.query(Room.id).filter(
-        Room.parent_room_id.in_(assigned_ids)
-    ).all()
+    # Recursively include all descendant rooms
+    all_ids = list(assigned_ids)
+    parent_ids = assigned_ids
+    while parent_ids:
+        sub_rooms = db.query(Room.id).filter(
+            Room.parent_room_id.in_(parent_ids)
+        ).all()
+        child_ids = [s.id for s in sub_rooms]
+        if not child_ids:
+            break
+        all_ids.extend(child_ids)
+        parent_ids = child_ids
 
-    return assigned_ids + [s.id for s in sub_rooms]
+    return all_ids

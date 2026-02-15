@@ -28,6 +28,7 @@ from app.api.routes.rooms import router as rooms_router
 from app.api.routes.users import router as users_router
 from app.api.routes.data_fields import router as data_fields_router
 from app.api.routes.integrations import router as integrations_router
+from app.api.routes.admin import router as admin_router
 
 # Configure logging
 logging.basicConfig(
@@ -58,6 +59,14 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     logger.info("Starting MetricFlow API...")
+
+    # Validate required secrets
+    config_errors = settings.validate_required_secrets()
+    if config_errors:
+        for err in config_errors:
+            logger.error(f"Configuration error: {err}")
+        if IS_PRODUCTION:
+            raise RuntimeError(f"Missing required configuration: {'; '.join(config_errors)}")
 
     # Run migrations in production
     if IS_PRODUCTION:
@@ -170,6 +179,7 @@ app.include_router(rooms_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(data_fields_router, prefix="/api")
 app.include_router(integrations_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
 
 
 @app.get("/")

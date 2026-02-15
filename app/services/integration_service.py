@@ -183,10 +183,18 @@ class IntegrationService:
     # --- OAuth State ---
 
     @staticmethod
-    def generate_oauth_state(integration_id: UUID) -> str:
-        """Generate a CSRF-safe OAuth state parameter."""
+    def generate_oauth_state(db: Session, integration_id: UUID) -> str:
+        """Generate a CSRF-safe OAuth state parameter and store it for verification."""
         csrf_token = secrets.token_urlsafe(32)
-        return f"{integration_id}:{csrf_token}"
+        state = f"{integration_id}:{csrf_token}"
+        # Store the CSRF token on the integration for callback verification
+        integration = db.query(Integration).filter(Integration.id == integration_id).first()
+        if integration:
+            config = dict(integration.config or {})
+            config["_oauth_state"] = csrf_token
+            integration.config = config
+            db.commit()
+        return state
 
     @staticmethod
     def parse_oauth_state(state: str) -> tuple[UUID | None, str]:
@@ -198,6 +206,22 @@ class IntegrationService:
             return UUID(parts[0]), parts[1]
         except (ValueError, IndexError):
             return None, ""
+
+    @staticmethod
+    def validate_oauth_state(db: Session, integration_id: UUID, csrf_token: str) -> bool:
+        """Validate OAuth CSRF token matches what was stored."""
+        integration = db.query(Integration).filter(Integration.id == integration_id).first()
+        if not integration:
+            return False
+        stored = (integration.config or {}).get("_oauth_state")
+        if not stored or stored != csrf_token:
+            return False
+        # Clear the state after validation (one-time use)
+        config = dict(integration.config or {})
+        config.pop("_oauth_state", None)
+        integration.config = config
+        db.commit()
+        return True
 
     # --- Helpers ---
 

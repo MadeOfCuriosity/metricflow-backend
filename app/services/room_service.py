@@ -137,6 +137,19 @@ class RoomService:
         return root_rooms
 
     @staticmethod
+    def _would_create_cycle(db: Session, room_id: UUID, proposed_parent_id: UUID) -> bool:
+        """Check if setting proposed_parent_id as parent of room_id would create a cycle."""
+        current_id = proposed_parent_id
+        visited = {room_id}
+        while current_id:
+            if current_id in visited:
+                return True
+            visited.add(current_id)
+            parent = db.query(Room).filter(Room.id == current_id).first()
+            current_id = parent.parent_room_id if parent else None
+        return False
+
+    @staticmethod
     def create_room(
         db: Session,
         org_id: UUID,
@@ -280,9 +293,11 @@ class RoomService:
         """
         Recursively collect all descendant room IDs for a given room.
         Returns IDs of children, grandchildren, etc. at unlimited depth.
+        Uses a visited set to protect against circular references.
         """
         descendant_ids = []
         queue = [room_id]
+        visited = {room_id}
         while queue:
             parent_id = queue.pop(0)
             child_ids = [
@@ -290,8 +305,11 @@ class RoomService:
                     Room.parent_room_id == parent_id
                 ).all()
             ]
-            descendant_ids.extend(child_ids)
-            queue.extend(child_ids)
+            for cid in child_ids:
+                if cid not in visited:
+                    descendant_ids.append(cid)
+                    visited.add(cid)
+                    queue.append(cid)
         return descendant_ids
 
     @staticmethod
@@ -346,11 +364,16 @@ class RoomService:
         """
         Get all ancestor rooms (parent chain) for breadcrumb navigation.
         Returns list from root to immediate parent.
+        Uses a visited set to protect against circular references.
         """
         ancestors = []
         current = room
+        visited = {room.id}
 
         while current.parent_room_id:
+            if current.parent_room_id in visited:
+                break  # Circular reference detected
+            visited.add(current.parent_room_id)
             parent = db.query(Room).filter(Room.id == current.parent_room_id).first()
             if parent:
                 ancestors.insert(0, parent)

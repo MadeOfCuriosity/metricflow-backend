@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import update as sa_update
 
 from app.api.deps import get_db, get_current_user_org
 from app.core.config import settings
@@ -52,13 +53,34 @@ def check_rate_limit(db: Session, org_id: UUID) -> tuple[bool, int]:
     return usage.call_count < limit, remaining
 
 
-def increment_usage(db: Session, org_id: UUID) -> int:
-    """Increment usage count and return new count."""
+def increment_usage_atomic(db: Session, org_id: UUID) -> tuple[bool, int]:
+    """
+    Atomically check rate limit and increment usage in a single query.
+    Returns (was_allowed, remaining_after).
+    """
     today = date.today()
+    limit = settings.AI_RATE_LIMIT_PER_DAY
     usage = get_or_create_usage(db, org_id, today)
-    usage.call_count += 1
+
+    # Atomic conditional increment: only increment if under limit
+    result = db.execute(
+        sa_update(AIUsage)
+        .where(
+            AIUsage.org_id == org_id,
+            AIUsage.usage_date == today,
+            AIUsage.call_count < limit,
+        )
+        .values(call_count=AIUsage.call_count + 1)
+    )
     db.commit()
-    return usage.call_count
+
+    if result.rowcount == 0:
+        # Limit was already reached
+        return False, 0
+
+    db.refresh(usage)
+    remaining = max(0, limit - usage.call_count)
+    return True, remaining
 
 
 @router.post("/kpi-builder", response_model=KPIBuilderResponse)
@@ -75,8 +97,8 @@ async def kpi_builder(
     """
     _, org = user_org
 
-    # Check rate limit
-    allowed, remaining = check_rate_limit(db, org.id)
+    # Atomically reserve a rate limit slot before making the API call
+    allowed, remaining = increment_usage_atomic(db, org.id)
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -96,11 +118,6 @@ async def kpi_builder(
     else:
         # Use Gemini API
         response = await AIService.generate_response(history, data.user_message)
-
-    # Increment usage only if successful (no error)
-    if not response.error:
-        increment_usage(db, org.id)
-        _, remaining = check_rate_limit(db, org.id)
 
     # Build response
     suggested_kpi = None
@@ -159,8 +176,8 @@ async def admin_agent(
     """
     _, org = user_org
 
-    # Check rate limit (shared with KPI builder)
-    allowed, remaining = check_rate_limit(db, org.id)
+    # Atomically reserve a rate limit slot before making the API call
+    allowed, remaining = increment_usage_atomic(db, org.id)
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -182,11 +199,6 @@ async def admin_agent(
         response = await AdminAIService.generate_response(
             db, org.id, history, data.user_message
         )
-
-    # Increment usage only if successful
-    if not response.error:
-        increment_usage(db, org.id)
-        _, remaining = check_rate_limit(db, org.id)
 
     return AdminAgentResponse(
         ai_response=response.text,

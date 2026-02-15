@@ -13,10 +13,26 @@ from app.core.security import (
     store_refresh_token,
     validate_refresh_token,
     rotate_refresh_token,
+    revoke_all_user_tokens,
     create_google_setup_token,
 )
 from app.models import Organization, User, UserRoomAssignment
 from app.schemas.auth import RegisterOrgRequest, InviteUserRequest
+
+
+MIN_PASSWORD_LENGTH = 8
+
+
+def validate_password_strength(password: str) -> None:
+    """Validate password meets minimum requirements. Raises ValueError if weak."""
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+    if not any(c.isupper() for c in password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not any(c.islower() for c in password):
+        raise ValueError("Password must contain at least one lowercase letter")
+    if not any(c.isdigit() for c in password):
+        raise ValueError("Password must contain at least one number")
 
 
 class AuthService:
@@ -94,6 +110,9 @@ class AuthService:
         Register a new organization with its first admin user.
         Returns the organization, user, access token, and refresh token.
         """
+        # Validate password strength
+        validate_password_strength(data.admin_password)
+
         # Check if email already exists
         existing_user = AuthService.get_user_by_email(db, data.admin_email)
         if existing_user:
@@ -272,8 +291,13 @@ class AuthService:
             raise ValueError("Password login is not enabled for this account. Sign in with Google instead.")
         if not verify_password(current_password, user.password_hash):
             raise ValueError("Current password is incorrect")
+        validate_password_strength(new_password)
 
         user.password_hash = get_password_hash(new_password)
+
+        # Revoke all existing refresh tokens so old sessions can't be reused
+        revoke_all_user_tokens(db, str(user.id))
+
         db.commit()
         return True
 
@@ -286,6 +310,10 @@ class AuthService:
 
         temp_password = AuthService.generate_temp_password()
         user.password_hash = get_password_hash(temp_password)
+
+        # Revoke all existing refresh tokens for the reset user
+        revoke_all_user_tokens(db, str(user_id))
+
         db.commit()
         return temp_password
 

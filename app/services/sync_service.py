@@ -28,6 +28,23 @@ class SyncService:
     """Orchestrates data syncing from external sources into DataFieldEntry."""
 
     @staticmethod
+    def cleanup_stale_sync_logs(db: Session, timeout_minutes: int = 30) -> int:
+        """Mark sync logs stuck in 'running' for too long as 'failed'."""
+        cutoff = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+        count = db.query(SyncLog).filter(
+            SyncLog.status == "running",
+            SyncLog.started_at < cutoff,
+        ).update({
+            "status": "failed",
+            "completed_at": datetime.utcnow(),
+            "summary": "Sync timed out (process may have crashed)",
+        })
+        if count > 0:
+            db.commit()
+            logger.warning(f"Cleaned up {count} stale sync log(s)")
+        return count
+
+    @staticmethod
     def execute_sync(
         db: Session,
         integration_id: UUID,
@@ -36,14 +53,18 @@ class SyncService:
     ) -> SyncLog:
         """
         Main sync logic:
-        1. Create SyncLog(status=running)
-        2. Instantiate connector
-        3. Refresh auth
-        4. Fetch data
-        5. Upsert into DataFieldEntry
-        6. Recalculate affected KPIs
-        7. Update logs and integration
+        1. Clean up stale sync logs
+        2. Create SyncLog(status=running)
+        3. Instantiate connector
+        4. Refresh auth
+        5. Fetch data
+        6. Upsert into DataFieldEntry
+        7. Recalculate affected KPIs
+        8. Update logs and integration
         """
+        # Clean up any stale sync logs from previous crashed runs
+        SyncService.cleanup_stale_sync_logs(db)
+
         integration = db.query(Integration).filter(
             Integration.id == integration_id,
         ).first()

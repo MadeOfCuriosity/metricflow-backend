@@ -97,25 +97,16 @@ class SQLInjectionPreventionMiddleware(BaseHTTPMiddleware):
     """
     Additional layer of SQL injection prevention.
     Note: SQLAlchemy ORM already prevents SQL injection when used correctly.
-    This is a defense-in-depth measure.
+    This is a defense-in-depth measure for query parameters only.
     """
 
-    # Patterns that might indicate SQL injection attempts
+    # Only match clear SQL injection patterns (multi-word to avoid false positives)
     SQL_PATTERNS = [
         "' OR '1'='1",
         "'; DROP TABLE",
         "'; DELETE FROM",
         "UNION SELECT",
         "UNION ALL SELECT",
-        "--",
-        "/*",
-        "*/",
-        "@@",
-        "CHAR(",
-        "NCHAR(",
-        "VARCHAR(",
-        "CAST(",
-        "CONVERT(",
         "EXEC(",
         "EXECUTE(",
     ]
