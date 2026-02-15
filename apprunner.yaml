@@ -14,7 +14,7 @@ run:
     - name: ENVIRONMENT
       value: "production"
     - name: FRONTEND_URL
-      value: "https://placeholder.amplifyapp.com"
+      value: "https://main.d33ftwd17k5p6o.amplifyapp.com"
   secrets:
     - name: DATABASE_URL
       value-from: "arn:aws:secretsmanager:us-east-2:170690344518:secret:metricflow/databaseurl-0lANQz"
