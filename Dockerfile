@@ -21,6 +21,7 @@ COPY ./app ./app
 COPY ./alembic ./alembic
 COPY ./alembic.ini .
 COPY ./main.py .
+COPY ./start.sh .
 
 # Change ownership to non-root user
 RUN chown -R appuser:appuser /app
@@ -35,5 +36,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command - production settings
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Default command - run migrations then start server
+CMD ["bash", "start.sh"]
