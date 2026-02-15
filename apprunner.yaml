@@ -7,7 +7,7 @@ build:
       - pip3 install -r requirements.txt
 
 run:
-  command: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+  command: python3 -m alembic upgrade head && python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
   network:
     port: 8000
   env:
