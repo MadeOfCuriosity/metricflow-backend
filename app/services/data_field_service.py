@@ -1,0 +1,318 @@
+"""
+Service for handling DataField operations.
+"""
+import re
+from typing import Optional
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+
+from app.models import DataField, DataFieldEntry, KPIDataField, Room, UserRoomAssignment
+from app.models.data_field import DataField as DataFieldModel
+from app.schemas.data_fields import DataFieldCreateRequest, DataFieldUpdateRequest
+from app.core.formula_parser import extract_input_fields
+
+
+class DataFieldService:
+    """Service for handling DataField business logic."""
+
+    @staticmethod
+    def generate_variable_name(name: str) -> str:
+        """
+        Convert a display name to a snake_case variable name.
+        e.g., "Revenue Per Employee" -> "revenue_per_employee"
+        """
+        # Remove non-alphanumeric chars except spaces
+        cleaned = re.sub(r'[^a-zA-Z0-9\s]', '', name)
+        # Replace spaces with underscores and convert to lowercase
+        var_name = re.sub(r'\s+', '_', cleaned.strip()).lower()
+        # Ensure it starts with a letter or underscore
+        if var_name and var_name[0].isdigit():
+            var_name = '_' + var_name
+        return var_name or 'unnamed_field'
+
+    @staticmethod
+    def ensure_unique_variable_name(db: Session, org_id: UUID, base_name: str, exclude_id: Optional[UUID] = None) -> str:
+        """
+        Ensure variable_name is unique within the org.
+        Appends _2, _3, etc. if needed.
+        """
+        var_name = DataFieldService.generate_variable_name(base_name)
+        candidate = var_name
+        counter = 2
+
+        while True:
+            query = db.query(DataField).filter(
+                DataField.org_id == org_id,
+                DataField.variable_name == candidate,
+            )
+            if exclude_id:
+                query = query.filter(DataField.id != exclude_id)
+            if not query.first():
+                return candidate
+            candidate = f"{var_name}_{counter}"
+            counter += 1
+
+    @staticmethod
+    def get_all_data_fields(
+        db: Session,
+        org_id: UUID,
+        room_id: Optional[UUID] = None,
+    ) -> list[DataField]:
+        """Get all data fields for an org, optionally filtered by room."""
+        query = db.query(DataField).filter(DataField.org_id == org_id)
+        if room_id:
+            query = query.filter(DataField.room_id == room_id)
+        return query.order_by(DataField.name).all()
+
+    @staticmethod
+    def get_accessible_data_fields(
+        db: Session,
+        org_id: UUID,
+        user_role: str,
+        user_id: UUID,
+    ) -> list[DataField]:
+        """
+        Get data fields accessible to the user.
+        Admin: all fields in org.
+        Room admin: fields in assigned rooms + sub-rooms + unassigned fields.
+        """
+        query = db.query(DataField).filter(DataField.org_id == org_id)
+
+        if user_role != "admin":
+            # Get accessible room IDs for room_admin
+            assignments = db.query(UserRoomAssignment.room_id).filter(
+                UserRoomAssignment.user_id == user_id
+            ).all()
+            assigned_ids = [a.room_id for a in assignments]
+
+            # Include sub-rooms
+            sub_rooms = db.query(Room.id).filter(
+                Room.parent_room_id.in_(assigned_ids)
+            ).all()
+            all_room_ids = assigned_ids + [s.id for s in sub_rooms]
+
+            # Filter to accessible rooms + unassigned (room_id is NULL)
+            from sqlalchemy import or_
+            query = query.filter(
+                or_(
+                    DataField.room_id.in_(all_room_ids),
+                    DataField.room_id.is_(None),
+                )
+            )
+
+        return query.order_by(DataField.name).all()
+
+    @staticmethod
+    def get_data_field_by_id(
+        db: Session,
+        field_id: UUID,
+        org_id: UUID,
+    ) -> Optional[DataField]:
+        """Get a single data field by ID."""
+        return db.query(DataField).filter(
+            DataField.id == field_id,
+            DataField.org_id == org_id,
+        ).first()
+
+    @staticmethod
+    def get_data_field_by_variable(
+        db: Session,
+        org_id: UUID,
+        variable_name: str,
+    ) -> Optional[DataField]:
+        """Get a data field by its variable_name within an org."""
+        return db.query(DataField).filter(
+            DataField.org_id == org_id,
+            DataField.variable_name == variable_name,
+        ).first()
+
+    @staticmethod
+    def create_data_field(
+        db: Session,
+        org_id: UUID,
+        user_id: UUID,
+        data: DataFieldCreateRequest,
+    ) -> DataField:
+        """Create a new data field."""
+        variable_name = DataFieldService.ensure_unique_variable_name(db, org_id, data.name)
+
+        field = DataField(
+            org_id=org_id,
+            room_id=data.room_id,
+            name=data.name,
+            variable_name=variable_name,
+            description=data.description,
+            unit=data.unit,
+            created_by=user_id,
+        )
+        db.add(field)
+        db.commit()
+        db.refresh(field)
+        return field
+
+    @staticmethod
+    def update_data_field(
+        db: Session,
+        field: DataField,
+        data: DataFieldUpdateRequest,
+    ) -> DataField:
+        """Update a data field. variable_name is immutable."""
+        if data.name is not None:
+            field.name = data.name
+        if data.description is not None:
+            field.description = data.description
+        if data.unit is not None:
+            field.unit = data.unit
+        if data.room_id is not None:
+            field.room_id = data.room_id
+
+        db.commit()
+        db.refresh(field)
+        return field
+
+    @staticmethod
+    def delete_data_field(db: Session, field: DataField) -> bool:
+        """
+        Delete a data field. Only allowed if no KPIs reference it.
+        Returns True if deleted, raises ValueError if in use.
+        """
+        kpi_count = db.query(KPIDataField).filter(
+            KPIDataField.data_field_id == field.id
+        ).count()
+
+        if kpi_count > 0:
+            raise ValueError(
+                f"Cannot delete data field '{field.name}': used by {kpi_count} KPI(s)"
+            )
+
+        db.delete(field)
+        db.commit()
+        return True
+
+    @staticmethod
+    def get_kpi_count(db: Session, field_id: UUID) -> int:
+        """Get the number of KPIs that reference this data field."""
+        return db.query(KPIDataField).filter(
+            KPIDataField.data_field_id == field_id
+        ).count()
+
+    @staticmethod
+    def get_latest_entry(db: Session, field_id: UUID) -> Optional[DataFieldEntry]:
+        """Get the most recent entry for a data field."""
+        return db.query(DataFieldEntry).filter(
+            DataFieldEntry.data_field_id == field_id
+        ).order_by(DataFieldEntry.date.desc()).first()
+
+    @staticmethod
+    def auto_create_from_formula(
+        db: Session,
+        org_id: UUID,
+        user_id: UUID,
+        formula: str,
+        room_id: Optional[UUID] = None,
+        data_field_mappings: Optional[dict[str, UUID]] = None,
+    ) -> dict[str, UUID]:
+        """
+        Parse formula, create DataFields for any new variables, return variable->field_id mapping.
+        If data_field_mappings is provided, use explicit mappings and only create missing ones.
+        """
+        variables = extract_input_fields(formula)
+        result_mapping: dict[str, UUID] = {}
+
+        for var_name in variables:
+            # Check explicit mapping first
+            if data_field_mappings and var_name in data_field_mappings:
+                result_mapping[var_name] = data_field_mappings[var_name]
+                continue
+
+            # Check if variable already exists in org
+            existing = DataFieldService.get_data_field_by_variable(db, org_id, var_name)
+            if existing:
+                result_mapping[var_name] = existing.id
+                continue
+
+            # Create new data field
+            display_name = var_name.replace('_', ' ').title()
+            field = DataField(
+                org_id=org_id,
+                room_id=room_id,
+                name=display_name,
+                variable_name=var_name,
+                created_by=user_id,
+            )
+            db.add(field)
+            db.flush()
+            result_mapping[var_name] = field.id
+
+        return result_mapping
+
+    @staticmethod
+    def create_kpi_data_field_links(
+        db: Session,
+        kpi_id: UUID,
+        variable_to_field: dict[str, UUID],
+    ) -> None:
+        """Create KPIDataField join records for a KPI."""
+        for var_name, field_id in variable_to_field.items():
+            link = KPIDataField(
+                kpi_id=kpi_id,
+                data_field_id=field_id,
+                variable_name=var_name,
+            )
+            db.add(link)
+
+    @staticmethod
+    def update_kpi_data_field_links(
+        db: Session,
+        kpi_id: UUID,
+        variable_to_field: dict[str, UUID],
+    ) -> None:
+        """Replace KPIDataField links for a KPI (used when formula changes)."""
+        # Remove existing links
+        db.query(KPIDataField).filter(KPIDataField.kpi_id == kpi_id).delete()
+        # Create new links
+        DataFieldService.create_kpi_data_field_links(db, kpi_id, variable_to_field)
+
+    @staticmethod
+    def enrich_with_metadata(
+        db: Session,
+        fields: list[DataField],
+    ) -> list[dict]:
+        """
+        Enrich data fields with room_name, room_path, kpi_count, and latest_value.
+        Returns list of dicts ready for DataFieldResponse.
+        """
+        from app.services.room_service import RoomService
+
+        result = []
+        for field in fields:
+            room_name = field.room.name if field.room else None
+            room_path = None
+            if field.room:
+                ancestors = RoomService.get_ancestors(db, field.room)
+                path_parts = [a.name for a in ancestors] + [field.room.name]
+                room_path = " > ".join(path_parts)
+
+            kpi_count = DataFieldService.get_kpi_count(db, field.id)
+            latest_entry = DataFieldService.get_latest_entry(db, field.id)
+
+            result.append({
+                "id": field.id,
+                "org_id": field.org_id,
+                "room_id": field.room_id,
+                "room_name": room_name,
+                "room_path": room_path,
+                "name": field.name,
+                "variable_name": field.variable_name,
+                "description": field.description,
+                "unit": field.unit,
+                "created_by": field.created_by,
+                "created_at": field.created_at,
+                "kpi_count": kpi_count,
+                "latest_value": latest_entry.value if latest_entry else None,
+                "latest_date": latest_entry.date if latest_entry else None,
+            })
+
+        return result
