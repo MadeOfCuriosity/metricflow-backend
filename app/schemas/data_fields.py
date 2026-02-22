@@ -1,8 +1,10 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+EntryInterval = Literal["daily", "weekly", "monthly", "custom"]
 
 
 # --- DataField CRUD Schemas ---
@@ -12,6 +14,7 @@ class DataFieldCreateRequest(BaseModel):
     room_id: Optional[UUID] = None
     description: Optional[str] = None
     unit: Optional[str] = Field(None, max_length=50)
+    entry_interval: EntryInterval = "daily"
 
 
 class DataFieldUpdateRequest(BaseModel):
@@ -19,6 +22,7 @@ class DataFieldUpdateRequest(BaseModel):
     description: Optional[str] = None
     unit: Optional[str] = Field(None, max_length=50)
     room_id: Optional[UUID] = None
+    entry_interval: Optional[EntryInterval] = None
 
 
 class DataFieldBrief(BaseModel):
@@ -42,6 +46,7 @@ class DataFieldResponse(BaseModel):
     variable_name: str
     description: Optional[str]
     unit: Optional[str]
+    entry_interval: str = "daily"
     created_by: Optional[UUID]
     created_at: datetime
     kpi_count: int = 0
@@ -96,6 +101,7 @@ class FieldFormItem(BaseModel):
     data_field_name: str
     variable_name: str
     unit: Optional[str] = None
+    entry_interval: str = "daily"
     has_entry_today: bool
     today_value: Optional[float] = None
 
@@ -108,6 +114,17 @@ class RoomFieldGroup(BaseModel):
 
 class TodayFieldFormResponse(BaseModel):
     date: date
+    interval: Optional[str] = None
     rooms: list[RoomFieldGroup]
     completed_count: int
     total_count: int
+
+
+# --- CSV Import Schemas ---
+
+class CSVImportResponse(BaseModel):
+    rows_processed: int
+    entries_created: int
+    kpis_recalculated: int
+    errors: list[dict]
+    unmatched_columns: list[str]

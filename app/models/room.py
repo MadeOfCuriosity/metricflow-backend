@@ -28,6 +28,7 @@ class Room(Base):
     kpi_assignments = relationship("RoomKPIAssignment", back_populates="room", cascade="all, delete-orphan")
     user_assignments = relationship("UserRoomAssignment", back_populates="room", cascade="all, delete-orphan")
     data_fields = relationship("DataField", back_populates="room")
+    data_entries = relationship("DataEntry", back_populates="room")
 
     __table_args__ = (
         Index("ix_rooms_org_id", "org_id"),

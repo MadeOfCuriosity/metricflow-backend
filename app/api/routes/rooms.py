@@ -1,11 +1,13 @@
+from collections import Counter
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user_org, require_admin_org, check_room_access
-from app.models import User, Organization, Room as RoomModel
+from app.models import User, Organization, Room as RoomModel, KPIDefinition
 from app.schemas.kpi import KPIResponse
+from app.models import RoomKPIAssignment as RoomKPIAssignmentModel
 from app.schemas.rooms import (
     RoomCreateRequest,
     RoomUpdateRequest,
@@ -17,8 +19,12 @@ from app.schemas.rooms import (
     AssignKPIsResponse,
     RoomDashboardResponse,
     RoomBreadcrumb,
+    AggregatedKPIResponse,
+    AggregatedKPIEntry,
+    SubRoomBreakdown,
 )
 from app.services.room_service import RoomService
+from app.services.aggregation_service import AggregationService
 
 
 router = APIRouter(prefix="/rooms", tags=["Rooms"])
@@ -324,10 +330,60 @@ def get_room_dashboard(
         db, room_id, org.id
     )
 
+    # Compute aggregated KPIs from sub-rooms
+    aggregated_kpis = []
+    descendant_ids = RoomService.get_all_descendant_ids(db, room_id)
+    if descendant_ids:
+        # Find KPIs assigned to descendant rooms
+        descendant_assignments = db.query(RoomKPIAssignmentModel).filter(
+            RoomKPIAssignmentModel.room_id.in_(descendant_ids)
+        ).all()
+
+        # Count how many sub-rooms each KPI appears in
+        kpi_room_count = Counter(a.kpi_id for a in descendant_assignments)
+
+        # Build a lookup for aggregation_method per KPI (use first found)
+        kpi_agg_method = {}
+        for a in descendant_assignments:
+            if a.kpi_id not in kpi_agg_method:
+                kpi_agg_method[a.kpi_id] = a.aggregation_method or "sum"
+
+        # KPIs in 2+ sub-rooms are aggregation candidates
+        for kpi_id, count in kpi_room_count.items():
+            if count < 2:
+                continue
+
+            kpi = db.query(KPIDefinition).filter(KPIDefinition.id == kpi_id).first()
+            if not kpi:
+                continue
+
+            method = kpi_agg_method.get(kpi_id, "sum")
+
+            entries = AggregationService.get_aggregated_entries(
+                db, org.id, kpi_id, room_id, method=method, limit=30
+            )
+
+            current_val = entries[0]["aggregated_value"] if entries else None
+            previous_val = entries[1]["aggregated_value"] if len(entries) > 1 else None
+
+            breakdown = AggregationService.get_sub_room_breakdown(
+                db, org.id, kpi_id, room_id
+            )
+
+            aggregated_kpis.append(AggregatedKPIResponse(
+                kpi=KPIResponse.model_validate(kpi).model_dump(),
+                aggregation_method=method,
+                current_aggregated_value=current_val,
+                previous_aggregated_value=previous_val,
+                recent_entries=[AggregatedKPIEntry(**e) for e in entries],
+                breakdown=[SubRoomBreakdown(**b) for b in breakdown],
+            ))
+
     return RoomDashboardResponse(
         room=RoomResponse(**room_data),
         breadcrumbs=breadcrumbs,
         room_kpis=[KPIResponse.model_validate(k) for k in room_kpis],
         sub_room_kpis=[KPIResponse.model_validate(k) for k in sub_room_kpis],
+        aggregated_kpis=aggregated_kpis,
         shared_kpis=[KPIResponse.model_validate(k) for k in shared_kpis],
     )

@@ -14,6 +14,7 @@ class DataEntry(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
     kpi_id = Column(UUID(as_uuid=True), ForeignKey("kpi_definitions.id", ondelete="CASCADE"), nullable=False)
+    room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True)
     date = Column(Date, nullable=False)
     values = Column(JSONB, nullable=False)  # e.g., {"revenue": 50000, "deals_closed": 10}
     calculated_value = Column(Float, nullable=False)  # the computed KPI result
@@ -23,10 +24,13 @@ class DataEntry(Base):
     # Relationships
     organization = relationship("Organization", back_populates="data_entries")
     kpi_definition = relationship("KPIDefinition", back_populates="data_entries")
+    room = relationship("Room", back_populates="data_entries")
     entered_by_user = relationship("User", back_populates="data_entries")
 
+    # Unique constraints managed by partial indexes in migration 010:
+    # - (org_id, kpi_id, date, room_id) WHERE room_id IS NOT NULL
+    # - (org_id, kpi_id, date) WHERE room_id IS NULL
     __table_args__ = (
-        UniqueConstraint("org_id", "kpi_id", "date", name="uq_data_entry_org_kpi_date"),
         Index("ix_data_entries_org_id", "org_id"),
         Index("ix_data_entries_kpi_id", "kpi_id"),
         Index("ix_data_entries_date", "date"),

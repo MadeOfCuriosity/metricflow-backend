@@ -14,6 +14,7 @@ class EntryValueInput(BaseModel):
 class CreateEntriesRequest(BaseModel):
     date: date
     entries: list[EntryValueInput] = Field(..., min_length=1)
+    room_id: Optional[UUID] = None  # Scope entries to a specific room
 
 
 # Response schemas
@@ -21,6 +22,8 @@ class DataEntryResponse(BaseModel):
     id: UUID
     kpi_id: UUID
     kpi_name: Optional[str] = None
+    room_id: Optional[UUID] = None
+    room_name: Optional[str] = None
     date: date
     values: dict
     calculated_value: float

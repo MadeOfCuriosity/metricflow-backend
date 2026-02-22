@@ -152,6 +152,7 @@ class DataFieldService:
             variable_name=variable_name,
             description=data.description,
             unit=data.unit,
+            entry_interval=data.entry_interval,
             created_by=user_id,
         )
         db.add(field)
@@ -174,6 +175,8 @@ class DataFieldService:
             field.unit = data.unit
         if data.room_id is not None:
             field.room_id = data.room_id
+        if data.entry_interval is not None:
+            field.entry_interval = data.entry_interval
 
         db.commit()
         db.refresh(field)
@@ -353,6 +356,7 @@ class DataFieldService:
                 "variable_name": field.variable_name,
                 "description": field.description,
                 "unit": field.unit,
+                "entry_interval": field.entry_interval,
                 "created_by": field.created_by,
                 "created_at": field.created_at,
                 "kpi_count": kpi_count,

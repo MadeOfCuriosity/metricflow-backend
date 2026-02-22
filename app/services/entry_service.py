@@ -15,6 +15,19 @@ from app.schemas.data_fields import FieldEntryInput
 from app.services.calculation_service import CalculationService, StatsSummary
 
 
+def normalize_date_for_interval(d: date, interval: str) -> date:
+    """Snap a date to the canonical date for its interval period."""
+    if interval == "weekly":
+        # Snap to Monday of the week
+        return d - timedelta(days=d.weekday())
+    elif interval == "monthly":
+        # Snap to the 1st of the month
+        return d.replace(day=1)
+    else:
+        # daily and custom: use exact date
+        return d
+
+
 class EntryService:
     """Service for handling data entry business logic."""
 
@@ -25,6 +38,7 @@ class EntryService:
         user_id: UUID,
         entry_date: date,
         entries: list[EntryValueInput],
+        room_id: Optional[UUID] = None,
     ) -> tuple[list[DataEntry], list[dict]]:
         """
         Create multiple data entries for a given date.
@@ -78,12 +92,17 @@ class EntryService:
                     })
                     continue
 
-                # Check if entry already exists for this date
-                existing = db.query(DataEntry).filter(
+                # Check if entry already exists for this date (and room)
+                existing_query = db.query(DataEntry).filter(
                     DataEntry.org_id == org_id,
                     DataEntry.kpi_id == entry_input.kpi_id,
-                    DataEntry.date == entry_date
-                ).first()
+                    DataEntry.date == entry_date,
+                )
+                if room_id is not None:
+                    existing_query = existing_query.filter(DataEntry.room_id == room_id)
+                else:
+                    existing_query = existing_query.filter(DataEntry.room_id.is_(None))
+                existing = existing_query.first()
 
                 if existing:
                     # Update existing entry
@@ -97,6 +116,7 @@ class EntryService:
                     entry = DataEntry(
                         org_id=org_id,
                         kpi_id=entry_input.kpi_id,
+                        room_id=room_id,
                         date=entry_date,
                         values=entry_input.values,
                         calculated_value=calc_result.value,
@@ -124,6 +144,7 @@ class EntryService:
         db: Session,
         org_id: UUID,
         kpi_id: Optional[UUID] = None,
+        room_id: Optional[UUID] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         limit: int = 100,
@@ -135,6 +156,8 @@ class EntryService:
 
         if kpi_id:
             query = query.filter(DataEntry.kpi_id == kpi_id)
+        if room_id is not None:
+            query = query.filter(DataEntry.room_id == room_id)
         if start_date:
             query = query.filter(DataEntry.date >= start_date)
         if end_date:
@@ -360,6 +383,7 @@ class EntryService:
     ) -> int:
         """
         Recalculate all KPIs that depend on the given data fields for the given date.
+        Groups fields by room_id so each room gets its own DataEntry.
         Returns the number of KPIs recalculated.
         """
         # Find all KPIs that reference any of the affected data fields
@@ -385,54 +409,70 @@ class EntryService:
                 KPIDataField.kpi_id == kpi_id
             ).all()
 
-            # Collect values from data_field_entries for this date
-            values = {}
-            all_present = True
+            # Group field links by room_id (from their DataField)
+            fields_by_room: dict[Optional[UUID], list] = {}
             for link in kpi_field_links:
-                field_entry = db.query(DataFieldEntry).filter(
-                    DataFieldEntry.org_id == org_id,
-                    DataFieldEntry.data_field_id == link.data_field_id,
-                    DataFieldEntry.date == entry_date,
-                ).first()
+                field = db.query(DataField).filter(DataField.id == link.data_field_id).first()
+                room_id = field.room_id if field else None
+                if room_id not in fields_by_room:
+                    fields_by_room[room_id] = []
+                fields_by_room[room_id].append(link)
 
-                if field_entry:
-                    values[link.variable_name] = field_entry.value
-                else:
-                    all_present = False
-                    break
+            # Recalculate per room group
+            for room_id, room_links in fields_by_room.items():
+                values = {}
+                all_present = True
+                for link in room_links:
+                    field_entry = db.query(DataFieldEntry).filter(
+                        DataFieldEntry.org_id == org_id,
+                        DataFieldEntry.data_field_id == link.data_field_id,
+                        DataFieldEntry.date == entry_date,
+                    ).first()
 
-            if not all_present:
-                continue
+                    if field_entry:
+                        values[link.variable_name] = field_entry.value
+                    else:
+                        all_present = False
+                        break
 
-            # Calculate KPI value
-            calc_result = CalculationService.calculate(kpi.formula, values)
-            if not calc_result.success:
-                continue
+                if not all_present:
+                    continue
 
-            # Upsert into data_entries (the KPI results cache)
-            existing_kpi_entry = db.query(DataEntry).filter(
-                DataEntry.org_id == org_id,
-                DataEntry.kpi_id == kpi_id,
-                DataEntry.date == entry_date,
-            ).first()
+                # Calculate KPI value
+                calc_result = CalculationService.calculate(kpi.formula, values)
+                if not calc_result.success:
+                    continue
 
-            if existing_kpi_entry:
-                existing_kpi_entry.values = values
-                existing_kpi_entry.calculated_value = calc_result.value
-                existing_kpi_entry.entered_by = user_id
-            else:
-                kpi_entry = DataEntry(
-                    org_id=org_id,
-                    kpi_id=kpi_id,
-                    date=entry_date,
-                    values=values,
-                    calculated_value=calc_result.value,
-                    entered_by=user_id,
+                # Upsert into data_entries with room_id
+                existing_query = db.query(DataEntry).filter(
+                    DataEntry.org_id == org_id,
+                    DataEntry.kpi_id == kpi_id,
+                    DataEntry.date == entry_date,
                 )
-                db.add(kpi_entry)
+                if room_id is not None:
+                    existing_query = existing_query.filter(DataEntry.room_id == room_id)
+                else:
+                    existing_query = existing_query.filter(DataEntry.room_id.is_(None))
+                existing_kpi_entry = existing_query.first()
 
-            db.flush()
-            recalculated += 1
+                if existing_kpi_entry:
+                    existing_kpi_entry.values = values
+                    existing_kpi_entry.calculated_value = calc_result.value
+                    existing_kpi_entry.entered_by = user_id
+                else:
+                    kpi_entry = DataEntry(
+                        org_id=org_id,
+                        kpi_id=kpi_id,
+                        room_id=room_id,
+                        date=entry_date,
+                        values=values,
+                        calculated_value=calc_result.value,
+                        entered_by=user_id,
+                    )
+                    db.add(kpi_entry)
+
+                db.flush()
+                recalculated += 1
 
         return recalculated
 
@@ -443,9 +483,14 @@ class EntryService:
         user_role: str,
         user_id: UUID,
         today: Optional[date] = None,
+        interval: Optional[str] = None,
     ) -> tuple[list[dict], int, int]:
         """
-        Get today's per-field entry form grouped by room.
+        Get per-field entry form grouped by room.
+
+        Args:
+            interval: Optional filter by entry_interval ("daily", "weekly", "monthly", "custom").
+                      When set, also normalizes the date for the interval.
 
         Returns:
             Tuple of (room groups, completed count, total count)
@@ -455,12 +500,20 @@ class EntryService:
         if today is None:
             today = date.today()
 
+        # Normalize the date for the requested interval
+        if interval:
+            today = normalize_date_for_interval(today, interval)
+
         # Get accessible data fields
         fields = DataFieldService.get_accessible_data_fields(
             db, org_id, user_role, user_id
         )
 
-        # Get today's field entries
+        # Filter by interval if specified
+        if interval:
+            fields = [f for f in fields if f.entry_interval == interval]
+
+        # Get field entries for the target date
         field_ids = [f.id for f in fields]
         today_entries = db.query(DataFieldEntry).filter(
             DataFieldEntry.org_id == org_id,
@@ -497,6 +550,7 @@ class EntryService:
                 "data_field_name": field.name,
                 "variable_name": field.variable_name,
                 "unit": field.unit,
+                "entry_interval": field.entry_interval,
                 "has_entry_today": has_entry,
                 "today_value": entry.value if entry else None,
             })

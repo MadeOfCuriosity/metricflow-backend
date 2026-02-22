@@ -19,6 +19,7 @@ class DataField(Base):
     variable_name = Column(String(255), nullable=False)  # Formula variable: "revenue" (org-unique, immutable)
     description = Column(Text, nullable=True)
     unit = Column(String(50), nullable=True)  # "$", "%", "hours", etc.
+    entry_interval = Column(String(20), nullable=False, default="daily")  # "daily", "weekly", "monthly", "custom"
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -29,8 +30,10 @@ class DataField(Base):
     field_entries = relationship("DataFieldEntry", back_populates="data_field", cascade="all, delete-orphan")
     kpi_data_fields = relationship("KPIDataField", back_populates="data_field", cascade="all, delete-orphan")
 
+    # Unique constraints managed by partial indexes in migration 010:
+    # - (org_id, variable_name, room_id) WHERE room_id IS NOT NULL
+    # - (org_id, variable_name) WHERE room_id IS NULL
     __table_args__ = (
-        UniqueConstraint("org_id", "variable_name", name="uq_data_field_org_variable"),
         Index("ix_data_fields_org_id", "org_id"),
         Index("ix_data_fields_room_id", "room_id"),
     )

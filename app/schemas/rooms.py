@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
@@ -77,12 +77,37 @@ class RoomBreadcrumb(BaseModel):
     name: str
 
 
+class AggregatedKPIEntry(BaseModel):
+    """Single date point of aggregated KPI data from sub-rooms."""
+    date: date
+    aggregated_value: float
+    sub_room_count: int
+
+
+class SubRoomBreakdown(BaseModel):
+    """Per-sub-room value for a KPI."""
+    room_id: str
+    room_name: str
+    value: float
+
+
+class AggregatedKPIResponse(BaseModel):
+    """KPI with aggregated data computed from sub-rooms."""
+    kpi: dict  # KPIResponse-compatible dict
+    aggregation_method: str = "sum"
+    current_aggregated_value: Optional[float] = None
+    previous_aggregated_value: Optional[float] = None
+    recent_entries: list[AggregatedKPIEntry] = []
+    breakdown: list[SubRoomBreakdown] = []
+
+
 class RoomDashboardResponse(BaseModel):
     """Response containing room dashboard data."""
     room: RoomResponse
     breadcrumbs: list[RoomBreadcrumb]
     room_kpis: list  # KPIResponse objects
     sub_room_kpis: list = []  # KPIResponse objects (rolled up from sub-rooms)
+    aggregated_kpis: list[AggregatedKPIResponse] = []  # Aggregated from sub-rooms
     shared_kpis: list  # KPIResponse objects
 
 
