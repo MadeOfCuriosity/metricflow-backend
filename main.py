@@ -60,13 +60,11 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting MetricFlow API...")
 
-    # Validate required secrets
+    # Validate required secrets (warn but don't crash — App Runner rolls back config on failure)
     config_errors = settings.validate_required_secrets()
     if config_errors:
         for err in config_errors:
-            logger.error(f"Configuration error: {err}")
-        if IS_PRODUCTION:
-            raise RuntimeError(f"Missing required configuration: {'; '.join(config_errors)}")
+            logger.warning(f"Configuration warning: {err}")
 
     # Run migrations in production
     if IS_PRODUCTION:
