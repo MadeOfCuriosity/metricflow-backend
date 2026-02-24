@@ -27,6 +27,9 @@ from app.schemas.data_fields import (
     RoomFieldGroup,
     FieldFormItem,
     TodayFieldFormResponse,
+    SheetFieldRow,
+    SheetRoomGroup,
+    SheetViewResponse,
 )
 from app.services.entry_service import EntryService
 
@@ -338,6 +341,55 @@ def get_today_field_form(
         ],
         completed_count=completed_count,
         total_count=total_count,
+    )
+
+
+@router.get("/fields/sheet", response_model=SheetViewResponse)
+def get_sheet_view(
+    month: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="Month in YYYY-MM format"),
+    room_id: Optional[UUID] = Query(None, description="Filter by room ID"),
+    user_org: tuple[User, Organization] = Depends(get_current_user_org),
+    db: Session = Depends(get_db),
+):
+    """
+    Get spreadsheet-style data for a month.
+    Returns all daily-interval fields grouped by room with values for each day.
+    """
+    user, org = user_org
+
+    try:
+        year, month_num = int(month[:4]), int(month[5:7])
+        if not 1 <= month_num <= 12:
+            raise ValueError
+    except (ValueError, IndexError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid month format. Use YYYY-MM (e.g., 2026-02)",
+        )
+
+    data = EntryService.get_sheet_data(
+        db=db,
+        org_id=org.id,
+        user_role=user.role,
+        user_id=user.id,
+        year=year,
+        month=month_num,
+        room_id=room_id,
+    )
+
+    return SheetViewResponse(
+        month=data["month"],
+        dates=data["dates"],
+        room_groups=[
+            SheetRoomGroup(
+                room_id=group["room_id"],
+                room_name=group["room_name"],
+                fields=[SheetFieldRow(**f) for f in group["fields"]],
+            )
+            for group in data["room_groups"]
+        ],
+        total_filled=data["total_filled"],
+        total_cells=data["total_cells"],
     )
 
 

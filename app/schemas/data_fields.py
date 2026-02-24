@@ -120,6 +120,32 @@ class TodayFieldFormResponse(BaseModel):
     total_count: int
 
 
+# --- Sheet View Schemas ---
+
+class SheetFieldRow(BaseModel):
+    data_field_id: UUID
+    name: str
+    variable_name: str
+    unit: Optional[str] = None
+    entry_interval: str = "daily"
+    values: dict[str, Optional[float]]  # date_str -> value
+    mtd: float = 0.0
+
+
+class SheetRoomGroup(BaseModel):
+    room_id: Optional[UUID]
+    room_name: str
+    fields: list[SheetFieldRow]
+
+
+class SheetViewResponse(BaseModel):
+    month: str  # "2026-02"
+    dates: list[str]  # all dates in the month (up to today)
+    room_groups: list[SheetRoomGroup]
+    total_filled: int
+    total_cells: int
+
+
 # --- CSV Import Schemas ---
 
 class CSVImportResponse(BaseModel):

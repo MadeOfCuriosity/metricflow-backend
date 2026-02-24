@@ -1,6 +1,7 @@
 """
 Service for handling data entry operations.
 """
+import calendar
 from datetime import date, timedelta
 from typing import Optional
 from uuid import UUID
@@ -556,3 +557,109 @@ class EntryService:
             })
 
         return list(room_groups.values()), completed_count, total_count
+
+    @staticmethod
+    def get_sheet_data(
+        db: Session,
+        org_id: UUID,
+        user_role: str,
+        user_id: UUID,
+        year: int,
+        month: int,
+        room_id: Optional[UUID] = None,
+    ) -> dict:
+        """
+        Get spreadsheet-style data for a month.
+        Returns all daily-interval fields with their entries across the month.
+        """
+        from app.services.data_field_service import DataFieldService
+
+        # Build date range for the month (up to today if current month)
+        days_in_month = calendar.monthrange(year, month)[1]
+        month_start = date(year, month, 1)
+        month_end = date(year, month, days_in_month)
+        today = date.today()
+        effective_end = min(month_end, today)
+
+        dates = []
+        d = month_start
+        while d <= effective_end:
+            dates.append(d)
+            d += timedelta(days=1)
+
+        date_strings = [d.isoformat() for d in dates]
+
+        # Get accessible data fields (daily interval only)
+        fields = DataFieldService.get_accessible_data_fields(
+            db, org_id, user_role, user_id
+        )
+        fields = [f for f in fields if f.entry_interval == "daily"]
+
+        if room_id:
+            fields = [f for f in fields if f.room_id == room_id]
+
+        if not fields:
+            return {
+                "month": f"{year:04d}-{month:02d}",
+                "dates": date_strings,
+                "room_groups": [],
+                "total_filled": 0,
+                "total_cells": 0,
+            }
+
+        field_ids = [f.id for f in fields]
+
+        # Batch-fetch all entries for these fields in the date range
+        entries = db.query(DataFieldEntry).filter(
+            DataFieldEntry.org_id == org_id,
+            DataFieldEntry.data_field_id.in_(field_ids),
+            DataFieldEntry.date >= month_start,
+            DataFieldEntry.date <= effective_end,
+        ).all()
+
+        # Build lookup: (field_id, date_str) -> value
+        entry_map: dict[tuple, float] = {}
+        for e in entries:
+            entry_map[(e.data_field_id, e.date.isoformat())] = e.value
+
+        # Group fields by room
+        room_groups_dict: dict[str, dict] = {}
+        total_filled = 0
+        total_cells = 0
+
+        for field in fields:
+            room_key = str(field.room_id) if field.room_id else "unassigned"
+            if room_key not in room_groups_dict:
+                room_groups_dict[room_key] = {
+                    "room_id": field.room_id,
+                    "room_name": field.room.name if field.room else "Unassigned",
+                    "fields": [],
+                }
+
+            values: dict[str, Optional[float]] = {}
+            mtd = 0.0
+            for ds in date_strings:
+                val = entry_map.get((field.id, ds))
+                values[ds] = val
+                if val is not None:
+                    mtd += val
+                    total_filled += 1
+                total_cells += 1
+
+            room_groups_dict[room_key]["fields"].append({
+                "data_field_id": field.id,
+                "name": field.name,
+                "variable_name": field.variable_name,
+                "unit": field.unit,
+                "entry_interval": field.entry_interval,
+                "values": values,
+                "mtd": mtd,
+            })
+
+        return {
+            "month": f"{year:04d}-{month:02d}",
+            "dates": date_strings,
+            "room_groups": list(room_groups_dict.values()),
+            "total_filled": total_filled,
+            "total_cells": total_cells,
+        }
