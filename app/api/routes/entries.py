@@ -1,3 +1,4 @@
+import calendar
 import csv
 import io
 from datetime import date
@@ -5,10 +6,11 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user_org
-from app.models import User, Organization, DataField
+from app.models import User, Organization, DataField, DataFieldRoom, Room
 from app.schemas.entries import (
     CreateEntriesRequest,
     CreateEntriesResponse,
@@ -277,7 +279,7 @@ def create_field_entries(
             id=entry.id,
             data_field_id=entry.data_field_id,
             data_field_name=entry.data_field.name if entry.data_field else None,
-            room_name=entry.data_field.room.name if entry.data_field and entry.data_field.room else None,
+            room_names=[ra.room.name for ra in entry.data_field.room_assignments] if entry.data_field else [],
             date=entry.date,
             value=entry.value,
             entered_by=entry.entered_by,
@@ -401,14 +403,15 @@ async def import_csv_field_entries(
 ):
     """
     Import data field entries from a CSV file.
-    CSV format: first column is 'field' (data field name or variable_name),
-    remaining columns are dates (YYYY-MM-DD). Each row is one data field
-    with values across dates horizontally.
 
-    Example:
+    Format:
         field,2026-01-15,2026-01-16,2026-01-17
         revenue,15000,18500,20000
         deals_closed,5,7,3
+
+    Fields are matched by variable_name or display name (case-insensitive).
+    If a field doesn't exist yet, it is automatically created.
+    Fields are NOT auto-assigned to rooms — assign rooms manually after import.
     """
     user, org = user_org
 
@@ -452,11 +455,17 @@ async def import_csv_field_entries(
             detail="First column header must be 'field'. Format: field,2026-01-15,2026-01-16,...",
         )
 
+    # Detect optional room column
+    has_room_column = (
+        len(header) > 1 and header[1].lower() in ("room", "room_name")
+    )
+    date_start_col = 2 if has_room_column else 1
+
     # Parse date columns
     date_columns: list[tuple[int, date]] = []
     invalid_date_headers: list[str] = []
 
-    for col_idx, header_val in enumerate(header[1:], start=1):
+    for col_idx, header_val in enumerate(header[date_start_col:], start=date_start_col):
         if not header_val:
             continue
         try:
@@ -468,10 +477,16 @@ async def import_csv_field_entries(
     if not date_columns:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No valid date columns found. Column headers after 'field' must be dates (YYYY-MM-DD). Got: {header[1:]}",
+            detail=f"No valid date columns found. Column headers after 'field' must be dates (YYYY-MM-DD). Got: {header[date_start_col:]}",
         )
 
-    # Build field lookup maps
+    # Build room lookup map (only when room column is present)
+    room_name_map: dict[str, Room] = {}
+    if has_room_column:
+        org_rooms = db.query(Room).filter(Room.org_id == org.id).all()
+        room_name_map = {r.name.lower(): r for r in org_rooms}
+
+    # Build field lookup maps (variable_names are org-unique with M2M)
     org_fields = db.query(DataField).filter(DataField.org_id == org.id).all()
     var_map = {f.variable_name: f for f in org_fields}
     name_map = {f.name.lower(): f for f in org_fields}
@@ -481,6 +496,7 @@ async def import_csv_field_entries(
     total_entries_created = 0
     total_kpis_recalculated = 0
     unmatched_rows: list[str] = []
+    fields_created: list[str] = []
     errors: list[dict] = []
 
     # Collect entries grouped by date for batch processing
@@ -494,11 +510,42 @@ async def import_csv_field_entries(
         field_name = row[0].strip()
         rows_processed += 1
 
-        # Match field name to a DataField
+        # Room resolution (only when room column present)
+        target_room: Optional[Room] = None
+        if has_room_column:
+            room_cell = row[1].strip() if len(row) > 1 else ""
+            if not room_cell:
+                errors.append({"row": row_num, "error": "Empty room name"})
+                continue
+            target_room = room_name_map.get(room_cell.lower())
+            if target_room is None:
+                errors.append({"row": row_num, "error": f"Room not found: '{room_cell}'"})
+                continue
+
+        # Match field name to a DataField (org-unique variable_names)
         field_obj = var_map.get(field_name) or name_map.get(field_name.lower())
         if not field_obj:
-            unmatched_rows.append(field_name)
-            continue
+            # Auto-create the DataField
+            # Build a safe variable_name from the field name
+            safe_var = field_name.strip().lower().replace(" ", "_").replace("-", "_")
+            # Ensure it doesn't collide with an existing variable_name
+            if safe_var in var_map:
+                field_obj = var_map[safe_var]
+            else:
+                display_name = field_name.strip().replace("_", " ").title()
+                field_obj = DataField(
+                    org_id=org.id,
+                    name=display_name,
+                    variable_name=safe_var,
+                    entry_interval="daily",
+                    created_by=user.id,
+                )
+                db.add(field_obj)
+                db.flush()
+                # Add to lookup maps so subsequent rows can find it
+                var_map[safe_var] = field_obj
+                name_map[display_name.lower()] = field_obj
+                fields_created.append(display_name)
 
         # Read values for each date column
         for col_idx, entry_date in date_columns:
@@ -535,7 +582,97 @@ async def import_csv_field_entries(
     return CSVImportResponse(
         rows_processed=rows_processed,
         entries_created=total_entries_created,
+        fields_created=fields_created,
         kpis_recalculated=total_kpis_recalculated,
         errors=errors,
-        unmatched_columns=unmatched_rows + invalid_date_headers,
+        unmatched_columns=invalid_date_headers,
+    )
+
+
+@router.get("/fields/csv-template")
+def download_csv_template(
+    month: Optional[str] = Query(None, description="Month in YYYY-MM format (defaults to current month)"),
+    user_org: tuple[User, Organization] = Depends(get_current_user_org),
+    db: Session = Depends(get_db),
+):
+    """
+    Download a CSV template pre-populated with existing field names and
+    date headers for the requested month.
+    """
+    user, org = user_org
+
+    # Parse month or default to current
+    if month:
+        try:
+            parts = month.split("-")
+            year, mon = int(parts[0]), int(parts[1])
+        except (ValueError, IndexError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Month must be in YYYY-MM format",
+            )
+    else:
+        today = date.today()
+        year, mon = today.year, today.month
+
+    # Build date headers for the month
+    days_in_month = calendar.monthrange(year, mon)[1]
+    date_headers = [date(year, mon, d).isoformat() for d in range(1, days_in_month + 1)]
+
+    # Get existing fields with room info
+    org_fields = db.query(DataField).filter(DataField.org_id == org.id).order_by(DataField.name).all()
+
+    # Check if any field has room assignments
+    room_assignments = db.query(
+        DataFieldRoom.data_field_id, Room.name
+    ).join(Room, DataFieldRoom.room_id == Room.id).filter(
+        DataFieldRoom.data_field_id.in_([f.id for f in org_fields])
+    ).all() if org_fields else []
+
+    field_rooms_map: dict[UUID, list[str]] = {}
+    for fid, rname in room_assignments:
+        field_rooms_map.setdefault(fid, []).append(rname)
+
+    has_rooms = bool(field_rooms_map)
+
+    # Build CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    header = ["field"]
+    if has_rooms:
+        header.append("room")
+    header.extend(date_headers)
+    writer.writerow(header)
+
+    # Data rows
+    if org_fields:
+        for field in org_fields:
+            rooms = field_rooms_map.get(field.id, [])
+            if has_rooms and rooms:
+                for room_name in rooms:
+                    row = [field.variable_name, room_name] + [""] * len(date_headers)
+                    writer.writerow(row)
+            else:
+                row = [field.variable_name]
+                if has_rooms:
+                    row.append("")
+                row.extend([""] * len(date_headers))
+                writer.writerow(row)
+    else:
+        # Empty template with example rows
+        row = ["example_field"]
+        if has_rooms:
+            row.append("")
+        row.extend([""] * len(date_headers))
+        writer.writerow(row)
+
+    output.seek(0)
+    filename = f"metricflow_template_{year:04d}-{mon:02d}.csv"
+
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

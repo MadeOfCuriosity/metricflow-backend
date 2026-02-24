@@ -6,9 +6,9 @@ from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, exists
 
-from app.models import DataField, DataFieldEntry, KPIDataField, Room, UserRoomAssignment
+from app.models import DataField, DataFieldEntry, DataFieldRoom, KPIDataField, Room, UserRoomAssignment
 from app.models.data_field import DataField as DataFieldModel
 from app.schemas.data_fields import DataFieldCreateRequest, DataFieldUpdateRequest
 from app.core.formula_parser import extract_input_fields
@@ -63,7 +63,14 @@ class DataFieldService:
         """Get all data fields for an org, optionally filtered by room."""
         query = db.query(DataField).filter(DataField.org_id == org_id)
         if room_id:
-            query = query.filter(DataField.room_id == room_id)
+            query = query.filter(
+                exists().where(
+                    and_(
+                        DataFieldRoom.data_field_id == DataField.id,
+                        DataFieldRoom.room_id == room_id,
+                    )
+                )
+            )
         return query.order_by(DataField.name).all()
 
     @staticmethod
@@ -100,14 +107,18 @@ class DataFieldService:
                 all_room_ids.extend(child_ids)
                 parent_ids = child_ids
 
-            # Filter to accessible rooms + unassigned (room_id is NULL)
+            # Filter to fields in accessible rooms OR fields with no room assignments
             from sqlalchemy import or_
-            query = query.filter(
-                or_(
-                    DataField.room_id.in_(all_room_ids),
-                    DataField.room_id.is_(None),
+            has_room_in_list = exists().where(
+                and_(
+                    DataFieldRoom.data_field_id == DataField.id,
+                    DataFieldRoom.room_id.in_(all_room_ids),
                 )
             )
+            has_no_rooms = ~exists().where(
+                DataFieldRoom.data_field_id == DataField.id
+            )
+            query = query.filter(or_(has_room_in_list, has_no_rooms))
 
         return query.order_by(DataField.name).all()
 
@@ -136,6 +147,15 @@ class DataFieldService:
         ).first()
 
     @staticmethod
+    def _sync_room_assignments(db: Session, field: DataField, room_ids: list[UUID]) -> None:
+        """Replace a field's room assignments with the given room_ids."""
+        # Remove existing assignments
+        db.query(DataFieldRoom).filter(DataFieldRoom.data_field_id == field.id).delete()
+        # Create new assignments
+        for rid in room_ids:
+            db.add(DataFieldRoom(data_field_id=field.id, room_id=rid))
+
+    @staticmethod
     def create_data_field(
         db: Session,
         org_id: UUID,
@@ -147,7 +167,6 @@ class DataFieldService:
 
         field = DataField(
             org_id=org_id,
-            room_id=data.room_id,
             name=data.name,
             variable_name=variable_name,
             description=data.description,
@@ -156,6 +175,12 @@ class DataFieldService:
             created_by=user_id,
         )
         db.add(field)
+        db.flush()
+
+        # Create room assignments
+        if data.room_ids:
+            DataFieldService._sync_room_assignments(db, field, data.room_ids)
+
         db.commit()
         db.refresh(field)
         return field
@@ -173,10 +198,10 @@ class DataFieldService:
             field.description = data.description
         if data.unit is not None:
             field.unit = data.unit
-        if data.room_id is not None:
-            field.room_id = data.room_id
         if data.entry_interval is not None:
             field.entry_interval = data.entry_interval
+        if data.room_ids is not None:
+            DataFieldService._sync_room_assignments(db, field, data.room_ids)
 
         db.commit()
         db.refresh(field)
@@ -221,7 +246,7 @@ class DataFieldService:
         org_id: UUID,
         user_id: UUID,
         formula: str,
-        room_id: Optional[UUID] = None,
+        room_ids: Optional[list[UUID]] = None,
         data_field_mappings: Optional[dict[str, UUID]] = None,
     ) -> dict[str, UUID]:
         """
@@ -247,13 +272,18 @@ class DataFieldService:
             display_name = var_name.replace('_', ' ').title()
             field = DataField(
                 org_id=org_id,
-                room_id=room_id,
                 name=display_name,
                 variable_name=var_name,
                 created_by=user_id,
             )
             db.add(field)
             db.flush()
+
+            # Assign rooms if provided
+            if room_ids:
+                for rid in room_ids:
+                    db.add(DataFieldRoom(data_field_id=field.id, room_id=rid))
+
             result_mapping[var_name] = field.id
 
         return result_mapping
@@ -291,7 +321,7 @@ class DataFieldService:
         fields: list[DataField],
     ) -> list[dict]:
         """
-        Enrich data fields with room_name, room_path, kpi_count, and latest_value.
+        Enrich data fields with room info, kpi_count, and latest_value.
         Returns list of dicts ready for DataFieldResponse.
         Uses batch queries to avoid N+1 problems.
         """
@@ -334,14 +364,37 @@ class DataFieldService:
         )
         latest_entry_map = {e.data_field_id: e for e in latest_entries}
 
+        # Batch: get room assignments for all fields
+        room_assignments = (
+            db.query(DataFieldRoom.data_field_id, Room.id, Room.name)
+            .join(Room, DataFieldRoom.room_id == Room.id)
+            .filter(DataFieldRoom.data_field_id.in_(field_ids))
+            .all()
+        )
+        # Build field_id -> list of (room_id, room_name) map
+        field_rooms_map: dict[UUID, list[tuple[UUID, str]]] = {}
+        for fid, rid, rname in room_assignments:
+            field_rooms_map.setdefault(fid, []).append((rid, rname))
+
+        # Batch: get room paths for all unique rooms
+        all_room_ids_set = set()
+        for rooms_list in field_rooms_map.values():
+            for rid, _ in rooms_list:
+                all_room_ids_set.add(rid)
+        room_path_map: dict[UUID, str] = {}
+        if all_room_ids_set:
+            all_rooms = db.query(Room).filter(Room.id.in_(all_room_ids_set)).all()
+            for room in all_rooms:
+                ancestors = RoomService.get_ancestors(db, room)
+                path_parts = [a.name for a in ancestors] + [room.name]
+                room_path_map[room.id] = " > ".join(path_parts)
+
         result = []
         for field in fields:
-            room_name = field.room.name if field.room else None
-            room_path = None
-            if field.room:
-                ancestors = RoomService.get_ancestors(db, field.room)
-                path_parts = [a.name for a in ancestors] + [field.room.name]
-                room_path = " > ".join(path_parts)
+            rooms_info = field_rooms_map.get(field.id, [])
+            room_ids_list = [rid for rid, _ in rooms_info]
+            room_names_list = [rname for _, rname in rooms_info]
+            room_paths_list = [room_path_map.get(rid, "") for rid in room_ids_list]
 
             kpi_count = kpi_count_map.get(field.id, 0)
             latest_entry = latest_entry_map.get(field.id)
@@ -349,9 +402,9 @@ class DataFieldService:
             result.append({
                 "id": field.id,
                 "org_id": field.org_id,
-                "room_id": field.room_id,
-                "room_name": room_name,
-                "room_path": room_path,
+                "room_ids": room_ids_list,
+                "room_names": room_names_list,
+                "room_paths": room_paths_list,
                 "name": field.name,
                 "variable_name": field.variable_name,
                 "description": field.description,

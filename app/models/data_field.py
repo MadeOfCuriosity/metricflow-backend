@@ -14,7 +14,6 @@ class DataField(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
-    room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True)
     name = Column(String(255), nullable=False)  # Display name: "Revenue"
     variable_name = Column(String(255), nullable=False)  # Formula variable: "revenue" (org-unique, immutable)
     description = Column(Text, nullable=True)
@@ -25,18 +24,25 @@ class DataField(Base):
 
     # Relationships
     organization = relationship("Organization", back_populates="data_fields")
-    room = relationship("Room", back_populates="data_fields")
     created_by_user = relationship("User", back_populates="data_fields")
     field_entries = relationship("DataFieldEntry", back_populates="data_field", cascade="all, delete-orphan")
     kpi_data_fields = relationship("KPIDataField", back_populates="data_field", cascade="all, delete-orphan")
+    room_assignments = relationship("DataFieldRoom", back_populates="data_field", cascade="all, delete-orphan")
 
-    # Unique constraints managed by partial indexes in migration 010:
-    # - (org_id, variable_name, room_id) WHERE room_id IS NOT NULL
-    # - (org_id, variable_name) WHERE room_id IS NULL
+    # Unique constraint: (org_id, variable_name) — managed in migration 012
     __table_args__ = (
         Index("ix_data_fields_org_id", "org_id"),
-        Index("ix_data_fields_room_id", "room_id"),
     )
+
+    @property
+    def rooms(self):
+        """List of Room objects this field is assigned to."""
+        return [ra.room for ra in self.room_assignments]
+
+    @property
+    def room_ids(self):
+        """List of room UUIDs this field is assigned to."""
+        return [ra.room_id for ra in self.room_assignments]
 
     def __repr__(self):
         return f"<DataField {self.name} ({self.variable_name})>"

@@ -127,7 +127,7 @@ class KPIService:
             org_id=org_id,
             user_id=user_id,
             formula=data.formula,
-            room_id=getattr(data, 'room_id', None),
+            room_ids=getattr(data, 'room_ids', None),
             data_field_mappings=getattr(data, 'data_field_mappings', None),
         )
 

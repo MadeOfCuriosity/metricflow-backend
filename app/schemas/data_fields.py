@@ -11,7 +11,7 @@ EntryInterval = Literal["daily", "weekly", "monthly", "custom"]
 
 class DataFieldCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    room_id: Optional[UUID] = None
+    room_ids: list[UUID] = []
     description: Optional[str] = None
     unit: Optional[str] = Field(None, max_length=50)
     entry_interval: EntryInterval = "daily"
@@ -21,7 +21,7 @@ class DataFieldUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     unit: Optional[str] = Field(None, max_length=50)
-    room_id: Optional[UUID] = None
+    room_ids: Optional[list[UUID]] = None
     entry_interval: Optional[EntryInterval] = None
 
 
@@ -30,8 +30,8 @@ class DataFieldBrief(BaseModel):
     id: UUID
     name: str
     variable_name: str
-    room_id: Optional[UUID]
-    room_name: Optional[str] = None
+    room_ids: list[UUID] = []
+    room_names: list[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -39,9 +39,9 @@ class DataFieldBrief(BaseModel):
 class DataFieldResponse(BaseModel):
     id: UUID
     org_id: UUID
-    room_id: Optional[UUID]
-    room_name: Optional[str] = None
-    room_path: Optional[str] = None
+    room_ids: list[UUID] = []
+    room_names: list[str] = []
+    room_paths: list[str] = []
     name: str
     variable_name: str
     description: Optional[str]
@@ -77,7 +77,7 @@ class FieldEntryResponse(BaseModel):
     id: UUID
     data_field_id: UUID
     data_field_name: Optional[str] = None
-    room_name: Optional[str] = None
+    room_names: list[str] = []
     date: date
     value: float
     entered_by: Optional[UUID]
@@ -151,6 +151,7 @@ class SheetViewResponse(BaseModel):
 class CSVImportResponse(BaseModel):
     rows_processed: int
     entries_created: int
+    fields_created: list[str] = []
     kpis_recalculated: int
     errors: list[dict]
     unmatched_columns: list[str]

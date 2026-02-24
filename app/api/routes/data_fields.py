@@ -78,12 +78,12 @@ def create_data_field(
     """
     user, org = user_org
 
-    # If room_id is specified, check access
-    if data.room_id:
-        if not check_room_access(data.room_id, user, db):
+    # Validate room access for each room_id
+    for rid in data.room_ids:
+        if not check_room_access(rid, user, db):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have access to this room",
+                detail=f"You don't have access to room {rid}",
             )
 
     field = DataFieldService.create_data_field(db, org.id, user.id, data)
@@ -115,12 +115,14 @@ def update_data_field(
             detail="Data field not found",
         )
 
-    # If changing room_id, verify access
-    if data.room_id and not check_room_access(data.room_id, user, db):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have access to the target room",
-        )
+    # Validate room access for each room_id
+    if data.room_ids is not None:
+        for rid in data.room_ids:
+            if not check_room_access(rid, user, db):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You don't have access to room {rid}",
+                )
 
     field = DataFieldService.update_data_field(db, field, data)
     enriched = DataFieldService.enrich_with_metadata(db, [field])

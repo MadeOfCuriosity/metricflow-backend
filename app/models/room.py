@@ -27,7 +27,7 @@ class Room(Base):
     created_by_user = relationship("User", back_populates="created_rooms")
     kpi_assignments = relationship("RoomKPIAssignment", back_populates="room", cascade="all, delete-orphan")
     user_assignments = relationship("UserRoomAssignment", back_populates="room", cascade="all, delete-orphan")
-    data_fields = relationship("DataField", back_populates="room")
+    data_field_assignments = relationship("DataFieldRoom", back_populates="room", cascade="all, delete-orphan")
     data_entries = relationship("DataEntry", back_populates="room")
 
     __table_args__ = (

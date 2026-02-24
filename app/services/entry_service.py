@@ -9,8 +9,9 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
-from app.models import DataEntry, KPIDefinition, DataField, DataFieldEntry, KPIDataField
+from app.models import DataEntry, KPIDefinition, DataField, DataFieldEntry, DataFieldRoom, KPIDataField
 from app.models.room import Room
+from app.models.room_kpi_assignment import RoomKPIAssignment
 from app.schemas.entries import EntryValueInput
 from app.schemas.data_fields import FieldEntryInput
 from app.services.calculation_service import CalculationService, StatsSummary
@@ -384,7 +385,7 @@ class EntryService:
     ) -> int:
         """
         Recalculate all KPIs that depend on the given data fields for the given date.
-        Groups fields by room_id so each room gets its own DataEntry.
+        Field values are shared (not room-scoped). Target rooms come from room_kpi_assignments.
         Returns the number of KPIs recalculated.
         """
         # Find all KPIs that reference any of the affected data fields
@@ -410,41 +411,42 @@ class EntryService:
                 KPIDataField.kpi_id == kpi_id
             ).all()
 
-            # Group field links by room_id (from their DataField)
-            fields_by_room: dict[Optional[UUID], list] = {}
+            # Gather all field values (shared, not room-scoped)
+            values = {}
+            all_present = True
             for link in kpi_field_links:
-                field = db.query(DataField).filter(DataField.id == link.data_field_id).first()
-                room_id = field.room_id if field else None
-                if room_id not in fields_by_room:
-                    fields_by_room[room_id] = []
-                fields_by_room[room_id].append(link)
+                field_entry = db.query(DataFieldEntry).filter(
+                    DataFieldEntry.org_id == org_id,
+                    DataFieldEntry.data_field_id == link.data_field_id,
+                    DataFieldEntry.date == entry_date,
+                ).first()
 
-            # Recalculate per room group
-            for room_id, room_links in fields_by_room.items():
-                values = {}
-                all_present = True
-                for link in room_links:
-                    field_entry = db.query(DataFieldEntry).filter(
-                        DataFieldEntry.org_id == org_id,
-                        DataFieldEntry.data_field_id == link.data_field_id,
-                        DataFieldEntry.date == entry_date,
-                    ).first()
+                if field_entry:
+                    values[link.variable_name] = field_entry.value
+                else:
+                    all_present = False
+                    break
 
-                    if field_entry:
-                        values[link.variable_name] = field_entry.value
-                    else:
-                        all_present = False
-                        break
+            if not all_present:
+                continue
 
-                if not all_present:
-                    continue
+            # Calculate KPI value
+            calc_result = CalculationService.calculate(kpi.formula, values)
+            if not calc_result.success:
+                continue
 
-                # Calculate KPI value
-                calc_result = CalculationService.calculate(kpi.formula, values)
-                if not calc_result.success:
-                    continue
+            # Determine target rooms from room_kpi_assignments
+            room_assignments = db.query(RoomKPIAssignment.room_id).filter(
+                RoomKPIAssignment.kpi_id == kpi_id
+            ).all()
+            target_room_ids: list[Optional[UUID]] = [ra.room_id for ra in room_assignments]
 
-                # Upsert into data_entries with room_id
+            # If KPI has no room assignments, create one org-level entry (room_id=None)
+            if not target_room_ids:
+                target_room_ids = [None]
+
+            # Upsert one DataEntry per target room
+            for room_id in target_room_ids:
                 existing_query = db.query(DataEntry).filter(
                     DataEntry.org_id == org_id,
                     DataEntry.kpi_id == kpi_id,
@@ -524,21 +526,23 @@ class EntryService:
 
         entries_by_field = {str(e.data_field_id): e for e in today_entries}
 
-        # Group fields by room
+        # Batch-load room assignments for all fields
+        field_room_assignments = db.query(
+            DataFieldRoom.data_field_id, Room.id, Room.name
+        ).join(Room, DataFieldRoom.room_id == Room.id).filter(
+            DataFieldRoom.data_field_id.in_(field_ids)
+        ).all() if field_ids else []
+
+        field_rooms_map: dict[UUID, list[tuple[UUID, str]]] = {}
+        for fid, rid, rname in field_room_assignments:
+            field_rooms_map.setdefault(fid, []).append((rid, rname))
+
+        # Group fields by room (a field in multiple rooms appears in each group)
         room_groups: dict[str, dict] = {}
         completed_count = 0
         total_count = len(fields)
 
         for field in fields:
-            room_key = str(field.room_id) if field.room_id else "unassigned"
-            if room_key not in room_groups:
-                room_name = field.room.name if field.room else "Unassigned"
-                room_groups[room_key] = {
-                    "room_id": field.room_id,
-                    "room_name": room_name,
-                    "fields": [],
-                }
-
             field_id_str = str(field.id)
             has_entry = field_id_str in entries_by_field
             entry = entries_by_field.get(field_id_str)
@@ -546,7 +550,7 @@ class EntryService:
             if has_entry:
                 completed_count += 1
 
-            room_groups[room_key]["fields"].append({
+            field_item = {
                 "data_field_id": field.id,
                 "data_field_name": field.name,
                 "variable_name": field.variable_name,
@@ -554,7 +558,29 @@ class EntryService:
                 "entry_interval": field.entry_interval,
                 "has_entry_today": has_entry,
                 "today_value": entry.value if entry else None,
-            })
+            }
+
+            rooms_for_field = field_rooms_map.get(field.id, [])
+            if not rooms_for_field:
+                # Unassigned field
+                room_key = "unassigned"
+                if room_key not in room_groups:
+                    room_groups[room_key] = {
+                        "room_id": None,
+                        "room_name": "Unassigned",
+                        "fields": [],
+                    }
+                room_groups[room_key]["fields"].append(field_item)
+            else:
+                for rid, rname in rooms_for_field:
+                    room_key = str(rid)
+                    if room_key not in room_groups:
+                        room_groups[room_key] = {
+                            "room_id": rid,
+                            "room_name": rname,
+                            "fields": [],
+                        }
+                    room_groups[room_key]["fields"].append(field_item)
 
         return list(room_groups.values()), completed_count, total_count
 
@@ -596,7 +622,13 @@ class EntryService:
         fields = [f for f in fields if f.entry_interval == "daily"]
 
         if room_id:
-            fields = [f for f in fields if f.room_id == room_id]
+            # Filter to fields assigned to this room via junction table
+            assigned_field_ids = set(
+                r.data_field_id for r in db.query(DataFieldRoom.data_field_id).filter(
+                    DataFieldRoom.room_id == room_id
+                ).all()
+            )
+            fields = [f for f in fields if f.id in assigned_field_ids]
 
         if not fields:
             return {
@@ -622,20 +654,23 @@ class EntryService:
         for e in entries:
             entry_map[(e.data_field_id, e.date.isoformat())] = e.value
 
+        # Batch-load room assignments for fields
+        field_room_assignments = db.query(
+            DataFieldRoom.data_field_id, Room.id, Room.name
+        ).join(Room, DataFieldRoom.room_id == Room.id).filter(
+            DataFieldRoom.data_field_id.in_(field_ids)
+        ).all() if field_ids else []
+
+        field_rooms_map: dict[UUID, list[tuple[UUID, str]]] = {}
+        for fid, rid, rname in field_room_assignments:
+            field_rooms_map.setdefault(fid, []).append((rid, rname))
+
         # Group fields by room
         room_groups_dict: dict[str, dict] = {}
         total_filled = 0
         total_cells = 0
 
         for field in fields:
-            room_key = str(field.room_id) if field.room_id else "unassigned"
-            if room_key not in room_groups_dict:
-                room_groups_dict[room_key] = {
-                    "room_id": field.room_id,
-                    "room_name": field.room.name if field.room else "Unassigned",
-                    "fields": [],
-                }
-
             values: dict[str, Optional[float]] = {}
             mtd = 0.0
             for ds in date_strings:
@@ -646,7 +681,7 @@ class EntryService:
                     total_filled += 1
                 total_cells += 1
 
-            room_groups_dict[room_key]["fields"].append({
+            field_item = {
                 "data_field_id": field.id,
                 "name": field.name,
                 "variable_name": field.variable_name,
@@ -654,7 +689,28 @@ class EntryService:
                 "entry_interval": field.entry_interval,
                 "values": values,
                 "mtd": mtd,
-            })
+            }
+
+            rooms_for_field = field_rooms_map.get(field.id, [])
+            if not rooms_for_field:
+                room_key = "unassigned"
+                if room_key not in room_groups_dict:
+                    room_groups_dict[room_key] = {
+                        "room_id": None,
+                        "room_name": "Unassigned",
+                        "fields": [],
+                    }
+                room_groups_dict[room_key]["fields"].append(field_item)
+            else:
+                for rid, rname in rooms_for_field:
+                    room_key = str(rid)
+                    if room_key not in room_groups_dict:
+                        room_groups_dict[room_key] = {
+                            "room_id": rid,
+                            "room_name": rname,
+                            "fields": [],
+                        }
+                    room_groups_dict[room_key]["fields"].append(field_item)
 
         return {
             "month": f"{year:04d}-{month:02d}",
