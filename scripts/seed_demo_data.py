@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
 Seed script to create demo organization with sample KPIs and 30 days of data.
+
+NOTE: For richer, config-driven demo data, use seed_personas.py instead.
+      This script is kept for backwards compatibility.
+
 Run with: python -m scripts.seed_demo_data
 """
 
@@ -34,7 +38,7 @@ def create_demo_data():
     try:
         # Check if demo org already exists
         existing_org = db.query(Organization).filter(
-            Organization.slug == "demo-company"
+            Organization.name == "Demo Company"
         ).first()
 
         if existing_org:
@@ -47,7 +51,7 @@ def create_demo_data():
         org = Organization(
             id=uuid4(),
             name="Demo Company",
-            slug="demo-company",
+            industry="General",
         )
         db.add(org)
         db.flush()
@@ -58,8 +62,10 @@ def create_demo_data():
             org_id=org.id,
             email="demo@metricflow.io",
             password_hash=get_password_hash("demo123"),
-            full_name="Demo User",
+            name="Demo User",
+            auth_provider="email",
             role="admin",
+            role_label="Admin",
         )
         db.add(user)
         db.flush()
@@ -74,8 +80,6 @@ def create_demo_data():
                 "category": "Sales",
                 "formula": "(conversions / visitors) * 100",
                 "input_fields": ["conversions", "visitors"],
-                "unit": "%",
-                "direction": "up",
             },
             {
                 "name": "Customer Acquisition Cost",
@@ -83,8 +87,6 @@ def create_demo_data():
                 "category": "Marketing",
                 "formula": "marketing_spend / new_customers",
                 "input_fields": ["marketing_spend", "new_customers"],
-                "unit": "$",
-                "direction": "down",
             },
             {
                 "name": "Monthly Revenue",
@@ -92,8 +94,6 @@ def create_demo_data():
                 "category": "Finance",
                 "formula": "revenue",
                 "input_fields": ["revenue"],
-                "unit": "$",
-                "direction": "up",
             },
             {
                 "name": "Customer Satisfaction",
@@ -101,8 +101,6 @@ def create_demo_data():
                 "category": "Operations",
                 "formula": "satisfaction_score",
                 "input_fields": ["satisfaction_score"],
-                "unit": "pts",
-                "direction": "up",
             },
             {
                 "name": "Employee Productivity",
@@ -110,8 +108,6 @@ def create_demo_data():
                 "category": "Operations",
                 "formula": "tasks_completed / employees",
                 "input_fields": ["tasks_completed", "employees"],
-                "unit": "",
-                "direction": "up",
             },
             {
                 "name": "Churn Rate",
@@ -119,8 +115,6 @@ def create_demo_data():
                 "category": "Sales",
                 "formula": "(churned_customers / total_customers) * 100",
                 "input_fields": ["churned_customers", "total_customers"],
-                "unit": "%",
-                "direction": "down",
             },
         ]
 
@@ -134,9 +128,10 @@ def create_demo_data():
                 category=kpi_data["category"],
                 formula=kpi_data["formula"],
                 input_fields=kpi_data["input_fields"],
-                unit=kpi_data["unit"],
-                direction=kpi_data["direction"],
-                is_active=True,
+                time_period="daily",
+                is_preset=False,
+                is_shared=False,
+                created_by=user.id,
             )
             db.add(kpi)
             kpis.append(kpi)
@@ -199,7 +194,7 @@ def create_demo_data():
                     date=entry_date,
                     values=values,
                     calculated_value=round(calculated, 2),
-                    created_by=user.id,
+                    entered_by=user.id,
                 )
                 db.add(entry)
                 entries_created += 1
@@ -211,24 +206,18 @@ def create_demo_data():
         insights_data = [
             {
                 "kpi_id": kpis[0].id,  # Conversion Rate
-                "insight_type": "trend",
                 "priority": "medium",
-                "title": "Conversion rate showing positive trend",
-                "description": "Your conversion rate has increased by 12% over the past 2 weeks. Consider analyzing which marketing channels are driving this improvement.",
+                "insight_text": "Conversion rate showing positive trend — increased by 12% over the past 2 weeks. Consider analyzing which marketing channels are driving this improvement.",
             },
             {
                 "kpi_id": kpis[1].id,  # CAC
-                "insight_type": "anomaly",
                 "priority": "high",
-                "title": "Customer Acquisition Cost spike detected",
-                "description": "CAC increased by 25% last week. Review recent marketing campaigns for efficiency opportunities.",
+                "insight_text": "Customer Acquisition Cost spike detected — CAC increased by 25% last week. Review recent marketing campaigns for efficiency opportunities.",
             },
             {
                 "kpi_id": kpis[2].id,  # Revenue
-                "insight_type": "milestone",
                 "priority": "low",
-                "title": "Revenue growth milestone",
-                "description": "Monthly revenue has grown 15% compared to the previous month. Great progress!",
+                "insight_text": "Revenue growth milestone — Monthly revenue has grown 15% compared to the previous month. Great progress!",
             },
         ]
 
@@ -237,11 +226,8 @@ def create_demo_data():
                 id=uuid4(),
                 org_id=org.id,
                 kpi_id=insight_data["kpi_id"],
-                insight_type=insight_data["insight_type"],
+                insight_text=insight_data["insight_text"],
                 priority=insight_data["priority"],
-                title=insight_data["title"],
-                description=insight_data["description"],
-                is_read=False,
             )
             db.add(insight)
 

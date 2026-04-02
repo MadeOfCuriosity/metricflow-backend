@@ -1,0 +1,500 @@
+{
+  "org": {
+    "name": "Suspended Creatives",
+    "industry": "Creative & Marketing Agency",
+    "email": "demo@suspendedcreatives.in",
+    "password": "demo123",
+    "user_name": "Arjun Mehta",
+    "role_label": "Founder & CEO"
+  },
+
+  "data_days": 120,
+  "story": "A 40-person creative agency that grew fast in 2024 but is now bleeding clients, burning cash, and struggling with team utilization. They don't track anything beyond revenue — MetricFlow reveals the hidden rot.",
+
+  "rooms": [
+    {
+      "name": "Business Development",
+      "description": "New client acquisition, pitches, and proposals",
+      "children": [
+        { "name": "Inbound Leads", "description": "Leads from website, referrals, and marketing" },
+        { "name": "Outbound & Pitches", "description": "Cold outreach, RFPs, and pitch decks" }
+      ]
+    },
+    {
+      "name": "Creative",
+      "description": "Design, content, and production teams",
+      "children": [
+        { "name": "Design Studio", "description": "Visual design, branding, and UI/UX" },
+        { "name": "Content & Copy", "description": "Copywriting, blogs, social content" },
+        { "name": "Video & Motion", "description": "Video production, motion graphics, reels" }
+      ]
+    },
+    {
+      "name": "Account Management",
+      "description": "Client relationships, delivery, and retention",
+      "children": [
+        { "name": "Client Servicing", "description": "Day-to-day client communication" },
+        { "name": "Project Management", "description": "Timelines, resource allocation, delivery" }
+      ]
+    },
+    {
+      "name": "Digital Marketing",
+      "description": "Performance marketing, SEO, and social for clients",
+      "children": [
+        { "name": "SEO", "description": "Organic search optimization for clients" },
+        { "name": "Social Media", "description": "Social strategy and content management" },
+        { "name": "Paid Media", "description": "Google Ads, Meta Ads, programmatic" }
+      ]
+    },
+    {
+      "name": "Strategy & Planning",
+      "description": "Brand strategy, campaign planning, market research"
+    },
+    {
+      "name": "Finance & Operations",
+      "description": "Revenue, costs, HR, and operational efficiency",
+      "children": [
+        { "name": "HR & People", "description": "Hiring, attrition, culture, training" },
+        { "name": "Finance", "description": "Invoicing, collections, P&L" }
+      ]
+    }
+  ],
+
+  "data_fields": [
+    { "name": "Inbound Leads", "variable_name": "inbound_leads", "unit": "#", "room": "Inbound Leads" },
+    { "name": "Qualified Leads", "variable_name": "qualified_leads", "unit": "#", "room": "Business Development" },
+    { "name": "Pitches Made", "variable_name": "pitches_made", "unit": "#", "room": "Outbound & Pitches" },
+    { "name": "Pitches Won", "variable_name": "pitches_won", "unit": "#", "room": "Outbound & Pitches" },
+    { "name": "New Clients Signed", "variable_name": "new_clients_signed", "unit": "#", "room": "Business Development" },
+    { "name": "New Client Revenue", "variable_name": "new_client_revenue", "unit": "INR", "room": "Business Development" },
+    { "name": "BD Spend", "variable_name": "bd_spend", "unit": "INR", "room": "Business Development" },
+    { "name": "Proposal Turnaround Days", "variable_name": "proposal_turnaround_days", "unit": "days", "room": "Outbound & Pitches" },
+
+    { "name": "Deliverables Submitted", "variable_name": "deliverables_submitted", "unit": "#", "room": "Creative" },
+    { "name": "Revisions Requested", "variable_name": "revisions_requested", "unit": "#", "room": "Creative" },
+    { "name": "First Draft Approvals", "variable_name": "first_draft_approvals", "unit": "#", "room": "Creative" },
+    { "name": "Active Designers", "variable_name": "designers_active", "unit": "#", "room": "Design Studio" },
+    { "name": "Deliverables Completed", "variable_name": "deliverables_completed", "unit": "#", "room": "Creative" },
+    { "name": "Avg Production Hours", "variable_name": "avg_production_hours", "unit": "hours", "room": "Creative" },
+    { "name": "Reused Assets", "variable_name": "reused_assets", "unit": "#", "room": "Creative" },
+    { "name": "Total Assets Created", "variable_name": "total_assets_created", "unit": "#", "room": "Creative" },
+
+    { "name": "Active Clients", "variable_name": "active_clients", "unit": "#", "room": "Account Management" },
+    { "name": "Retained Clients", "variable_name": "retained_clients", "unit": "#", "room": "Client Servicing" },
+    { "name": "Total Clients Start of Month", "variable_name": "total_clients_som", "unit": "#", "room": "Account Management" },
+    { "name": "Client NPS Score", "variable_name": "client_nps", "unit": "pts", "room": "Client Servicing" },
+    { "name": "Total Revenue", "variable_name": "total_revenue", "unit": "INR", "room": "Account Management" },
+    { "name": "Upsold Clients", "variable_name": "upsold_clients", "unit": "#", "room": "Client Servicing" },
+    { "name": "On-Time Deliveries", "variable_name": "on_time_deliveries", "unit": "#", "room": "Project Management" },
+    { "name": "Total Deliveries", "variable_name": "total_deliveries", "unit": "#", "room": "Project Management" },
+    { "name": "Avg Response Time Hours", "variable_name": "avg_response_hours", "unit": "hours", "room": "Client Servicing" },
+
+    { "name": "Client Ad Spend", "variable_name": "client_ad_spend", "unit": "INR", "room": "Paid Media" },
+    { "name": "Client Ad Revenue", "variable_name": "client_ad_revenue", "unit": "INR", "room": "Paid Media" },
+    { "name": "On-Time Campaign Launches", "variable_name": "on_time_launches", "unit": "#", "room": "Digital Marketing" },
+    { "name": "Total Campaign Launches", "variable_name": "total_launches", "unit": "#", "room": "Digital Marketing" },
+    { "name": "Keywords Improved", "variable_name": "keywords_improved", "unit": "#", "room": "SEO" },
+    { "name": "Total Keywords Tracked", "variable_name": "total_keywords_tracked", "unit": "#", "room": "SEO" },
+    { "name": "Social Engagements", "variable_name": "social_engagements", "unit": "#", "room": "Social Media" },
+    { "name": "Social Followers", "variable_name": "social_followers", "unit": "#", "room": "Social Media" },
+    { "name": "Avg CPC", "variable_name": "avg_cpc", "unit": "INR", "room": "Paid Media" },
+
+    { "name": "Strategy Briefs Completed", "variable_name": "briefs_completed", "unit": "#", "room": "Strategy & Planning" },
+    { "name": "Strategy Briefs Total", "variable_name": "briefs_total", "unit": "#", "room": "Strategy & Planning" },
+    { "name": "Avg Strategy-to-Launch Days", "variable_name": "strategy_to_launch_days", "unit": "days", "room": "Strategy & Planning" },
+
+    { "name": "Total Employees", "variable_name": "total_employees", "unit": "#", "room": "HR & People" },
+    { "name": "Employees Left", "variable_name": "employees_left", "unit": "#", "room": "HR & People" },
+    { "name": "Avg Employees", "variable_name": "avg_employees", "unit": "#", "room": "HR & People" },
+    { "name": "Billable Hours", "variable_name": "billable_hours", "unit": "hours", "room": "Finance & Operations" },
+    { "name": "Total Hours", "variable_name": "total_hours", "unit": "hours", "room": "Finance & Operations" },
+    { "name": "Direct Costs", "variable_name": "direct_costs", "unit": "INR", "room": "Finance" },
+    { "name": "Invoiced Amount", "variable_name": "invoiced_amount", "unit": "INR", "room": "Finance" },
+    { "name": "Collected Amount", "variable_name": "collected_amount", "unit": "INR", "room": "Finance" },
+    { "name": "Top Client Revenue", "variable_name": "top_client_revenue", "unit": "INR", "room": "Finance" },
+    { "name": "Training Hours", "variable_name": "training_hours", "unit": "hours", "room": "HR & People" },
+    { "name": "Unbillable Hours", "variable_name": "unbillable_hours", "unit": "hours", "room": "Finance & Operations" }
+  ],
+
+  "kpis": [
+    {
+      "name": "Pitch Win Rate",
+      "description": "Percentage of pitches that convert to signed clients",
+      "formula": "(pitches_won / pitches_made) * 100",
+      "input_fields": ["pitches_won", "pitches_made"],
+      "category": "Sales",
+      "room": "Outbound & Pitches"
+    },
+    {
+      "name": "Lead-to-Client Conversion Rate",
+      "description": "Percentage of qualified leads that become clients",
+      "formula": "(new_clients_signed / qualified_leads) * 100",
+      "input_fields": ["new_clients_signed", "qualified_leads"],
+      "category": "Sales",
+      "room": "Business Development"
+    },
+    {
+      "name": "Average Deal Size",
+      "description": "Average revenue per new client signed",
+      "formula": "new_client_revenue / new_clients_signed",
+      "input_fields": ["new_client_revenue", "new_clients_signed"],
+      "category": "Sales",
+      "room": "Business Development"
+    },
+    {
+      "name": "Cost Per Lead",
+      "description": "How much BD spend is needed to generate one qualified lead",
+      "formula": "bd_spend / qualified_leads",
+      "input_fields": ["bd_spend", "qualified_leads"],
+      "category": "Sales",
+      "room": "Business Development"
+    },
+    {
+      "name": "Proposal Turnaround Time",
+      "description": "Average days to send a proposal after first meeting",
+      "formula": "proposal_turnaround_days",
+      "input_fields": ["proposal_turnaround_days"],
+      "category": "Operations",
+      "room": "Outbound & Pitches"
+    },
+
+    {
+      "name": "Creative Revision Rate",
+      "description": "How often clients ask for revisions — high = misaligned briefs or poor quality",
+      "formula": "(revisions_requested / deliverables_submitted) * 100",
+      "input_fields": ["revisions_requested", "deliverables_submitted"],
+      "category": "Operations",
+      "room": "Creative"
+    },
+    {
+      "name": "First-Draft Approval Rate",
+      "description": "Percentage of deliverables approved on first submission — measures brief-to-output alignment",
+      "formula": "(first_draft_approvals / deliverables_submitted) * 100",
+      "input_fields": ["first_draft_approvals", "deliverables_submitted"],
+      "category": "Operations",
+      "room": "Creative"
+    },
+    {
+      "name": "Creative Output per Designer",
+      "description": "Average deliverables completed per active designer",
+      "formula": "deliverables_completed / designers_active",
+      "input_fields": ["deliverables_completed", "designers_active"],
+      "category": "Operations",
+      "room": "Design Studio"
+    },
+    {
+      "name": "Asset Reuse Rate",
+      "description": "How often existing assets are reused vs. creating from scratch — measures efficiency",
+      "formula": "(reused_assets / total_assets_created) * 100",
+      "input_fields": ["reused_assets", "total_assets_created"],
+      "category": "Custom",
+      "room": "Creative"
+    },
+    {
+      "name": "Avg Production Time",
+      "description": "Average hours spent per deliverable",
+      "formula": "avg_production_hours",
+      "input_fields": ["avg_production_hours"],
+      "category": "Operations",
+      "room": "Creative"
+    },
+
+    {
+      "name": "Client Retention Rate",
+      "description": "Percentage of clients retained month-over-month",
+      "formula": "(retained_clients / total_clients_som) * 100",
+      "input_fields": ["retained_clients", "total_clients_som"],
+      "category": "Sales",
+      "room": "Client Servicing"
+    },
+    {
+      "name": "Revenue per Client",
+      "description": "Average revenue generated per active client",
+      "formula": "total_revenue / active_clients",
+      "input_fields": ["total_revenue", "active_clients"],
+      "category": "Finance",
+      "room": "Account Management"
+    },
+    {
+      "name": "Upsell Rate",
+      "description": "Percentage of clients who buy additional services",
+      "formula": "(upsold_clients / active_clients) * 100",
+      "input_fields": ["upsold_clients", "active_clients"],
+      "category": "Sales",
+      "room": "Client Servicing"
+    },
+    {
+      "name": "SLA Compliance Rate",
+      "description": "Percentage of deliveries made on time — slipping SLA = client churn risk",
+      "formula": "(on_time_deliveries / total_deliveries) * 100",
+      "input_fields": ["on_time_deliveries", "total_deliveries"],
+      "category": "Operations",
+      "room": "Project Management"
+    },
+    {
+      "name": "Client Response Time",
+      "description": "Average hours to respond to client messages — slow = frustration",
+      "formula": "avg_response_hours",
+      "input_fields": ["avg_response_hours"],
+      "category": "Custom",
+      "room": "Client Servicing"
+    },
+    {
+      "name": "Client NPS",
+      "description": "Net Promoter Score from client surveys",
+      "formula": "client_nps",
+      "input_fields": ["client_nps"],
+      "category": "Custom",
+      "room": "Client Servicing"
+    },
+
+    {
+      "name": "Average Client ROAS",
+      "description": "Return on ad spend across all client campaigns",
+      "formula": "client_ad_revenue / client_ad_spend",
+      "input_fields": ["client_ad_revenue", "client_ad_spend"],
+      "category": "Marketing",
+      "room": "Paid Media"
+    },
+    {
+      "name": "Campaign On-Time Rate",
+      "description": "Percentage of campaigns launched on schedule",
+      "formula": "(on_time_launches / total_launches) * 100",
+      "input_fields": ["on_time_launches", "total_launches"],
+      "category": "Operations",
+      "room": "Digital Marketing"
+    },
+    {
+      "name": "SEO Keyword Improvement Rate",
+      "description": "Percentage of tracked keywords showing rank improvement",
+      "formula": "(keywords_improved / total_keywords_tracked) * 100",
+      "input_fields": ["keywords_improved", "total_keywords_tracked"],
+      "category": "Marketing",
+      "room": "SEO"
+    },
+    {
+      "name": "Social Engagement Rate",
+      "description": "Engagement as percentage of total followers",
+      "formula": "(social_engagements / social_followers) * 100",
+      "input_fields": ["social_engagements", "social_followers"],
+      "category": "Marketing",
+      "room": "Social Media"
+    },
+    {
+      "name": "Average Cost Per Click",
+      "description": "Average CPC across all client paid campaigns",
+      "formula": "avg_cpc",
+      "input_fields": ["avg_cpc"],
+      "category": "Marketing",
+      "room": "Paid Media"
+    },
+
+    {
+      "name": "Brief Completion Rate",
+      "description": "Percentage of strategy briefs completed within SLA",
+      "formula": "(briefs_completed / briefs_total) * 100",
+      "input_fields": ["briefs_completed", "briefs_total"],
+      "category": "Operations",
+      "room": "Strategy & Planning"
+    },
+    {
+      "name": "Strategy-to-Launch Time",
+      "description": "Average days from strategy approval to campaign going live",
+      "formula": "strategy_to_launch_days",
+      "input_fields": ["strategy_to_launch_days"],
+      "category": "Operations",
+      "room": "Strategy & Planning"
+    },
+
+    {
+      "name": "Revenue per Employee",
+      "description": "Total revenue divided by headcount — core agency health metric",
+      "formula": "total_revenue / total_employees",
+      "input_fields": ["total_revenue", "total_employees"],
+      "category": "Finance",
+      "room": "Finance & Operations"
+    },
+    {
+      "name": "Billable Utilization Rate",
+      "description": "Percentage of total hours that are billable — THE most important agency metric most don't track",
+      "formula": "(billable_hours / total_hours) * 100",
+      "input_fields": ["billable_hours", "total_hours"],
+      "category": "Finance",
+      "room": "Finance & Operations"
+    },
+    {
+      "name": "Gross Profit Margin",
+      "description": "Revenue minus direct costs as percentage of revenue",
+      "formula": "((total_revenue - direct_costs) / total_revenue) * 100",
+      "input_fields": ["total_revenue", "direct_costs"],
+      "category": "Finance",
+      "room": "Finance"
+    },
+    {
+      "name": "Invoice Collection Rate",
+      "description": "Percentage of invoiced amount actually collected — cash flow killer when low",
+      "formula": "(collected_amount / invoiced_amount) * 100",
+      "input_fields": ["collected_amount", "invoiced_amount"],
+      "category": "Finance",
+      "room": "Finance"
+    },
+    {
+      "name": "Employee Attrition Rate",
+      "description": "Monthly percentage of employees leaving",
+      "formula": "(employees_left / avg_employees) * 100",
+      "input_fields": ["employees_left", "avg_employees"],
+      "category": "Custom",
+      "room": "HR & People"
+    },
+    {
+      "name": "Revenue Concentration Risk",
+      "description": "What percentage of revenue comes from your biggest client — above 30% is dangerous",
+      "formula": "(top_client_revenue / total_revenue) * 100",
+      "input_fields": ["top_client_revenue", "total_revenue"],
+      "category": "Custom",
+      "room": "Finance"
+    },
+    {
+      "name": "Bench Rate",
+      "description": "Percentage of hours that are unbillable — the silent profit killer",
+      "formula": "(unbillable_hours / total_hours) * 100",
+      "input_fields": ["unbillable_hours", "total_hours"],
+      "category": "Custom",
+      "room": "Finance & Operations"
+    },
+    {
+      "name": "Training Investment per Employee",
+      "description": "Hours invested in upskilling per person — agencies that stop training lose talent",
+      "formula": "training_hours / total_employees",
+      "input_fields": ["training_hours", "total_employees"],
+      "category": "Custom",
+      "room": "HR & People"
+    }
+  ],
+
+  "field_generators": {
+    "_comment": "Each field has: baseline, trend_per_day, variance, min, max, weekend_factor (0=skip weekends), anomaly_chance",
+
+    "inbound_leads":           { "baseline": 8,    "trend": -0.02,  "variance": 3,    "min": 1,    "max": 18,   "weekend_factor": 0.2 },
+    "qualified_leads":         { "baseline": 4,    "trend": -0.015, "variance": 2,    "min": 0,    "max": 10,   "weekend_factor": 0.1 },
+    "pitches_made":            { "baseline": 2,    "trend": -0.008, "variance": 1,    "min": 0,    "max": 5,    "weekend_factor": 0,   "integer": true },
+    "pitches_won":             { "baseline": 0.5,  "trend": -0.005, "variance": 0.5,  "min": 0,    "max": 2,    "weekend_factor": 0,   "integer": true },
+    "new_clients_signed":      { "baseline": 0.4,  "trend": -0.003, "variance": 0.4,  "min": 0,    "max": 2,    "weekend_factor": 0,   "integer": true },
+    "new_client_revenue":      { "baseline": 250000,"trend": -800,  "variance": 80000,"min": 0,    "max": 600000,"weekend_factor": 0 },
+    "bd_spend":                { "baseline": 35000, "trend": 200,   "variance": 8000, "min": 15000,"max": 60000, "weekend_factor": 0 },
+    "proposal_turnaround_days":{ "baseline": 4,    "trend": 0.02,   "variance": 1.5,  "min": 1,    "max": 10,   "weekend_factor": 0 },
+
+    "deliverables_submitted":  { "baseline": 12,   "trend": -0.02,  "variance": 4,    "min": 2,    "max": 22,   "weekend_factor": 0.15 },
+    "revisions_requested":     { "baseline": 6,    "trend": 0.03,   "variance": 3,    "min": 0,    "max": 15,   "weekend_factor": 0.1 },
+    "first_draft_approvals":   { "baseline": 5,    "trend": -0.025, "variance": 2,    "min": 0,    "max": 12,   "weekend_factor": 0.1 },
+    "designers_active":        { "baseline": 8,    "trend": -0.015, "variance": 1,    "min": 4,    "max": 10,   "weekend_factor": 1 },
+    "deliverables_completed":  { "baseline": 10,   "trend": -0.02,  "variance": 3,    "min": 2,    "max": 18,   "weekend_factor": 0.15 },
+    "avg_production_hours":    { "baseline": 6,    "trend": 0.02,   "variance": 2,    "min": 2,    "max": 14,   "weekend_factor": 1 },
+    "reused_assets":           { "baseline": 2,    "trend": -0.01,  "variance": 1.5,  "min": 0,    "max": 6,    "weekend_factor": 0.1 },
+    "total_assets_created":    { "baseline": 10,   "trend": -0.01,  "variance": 3,    "min": 3,    "max": 18,   "weekend_factor": 0.15 },
+
+    "active_clients":          { "baseline": 22,   "trend": -0.04,  "variance": 2,    "min": 10,   "max": 30,   "weekend_factor": 1 },
+    "retained_clients":        { "baseline": 20,   "trend": -0.05,  "variance": 2,    "min": 8,    "max": 26,   "weekend_factor": 1 },
+    "total_clients_som":       { "baseline": 24,   "trend": -0.03,  "variance": 1,    "min": 12,   "max": 30,   "weekend_factor": 1 },
+    "client_nps":              { "baseline": 42,   "trend": -0.15,  "variance": 8,    "min": 10,   "max": 70,   "weekend_factor": 1 },
+    "total_revenue":           { "baseline": 1800000,"trend": -6000,"variance": 300000,"min": 800000,"max": 2800000,"weekend_factor": 1 },
+    "upsold_clients":          { "baseline": 2,    "trend": -0.015, "variance": 1.5,  "min": 0,    "max": 5,    "weekend_factor": 0,   "integer": true },
+    "on_time_deliveries":      { "baseline": 8,    "trend": -0.03,  "variance": 3,    "min": 2,    "max": 15,   "weekend_factor": 0.15 },
+    "total_deliveries":        { "baseline": 12,   "trend": -0.01,  "variance": 3,    "min": 4,    "max": 18,   "weekend_factor": 0.15 },
+    "avg_response_hours":      { "baseline": 4,    "trend": 0.03,   "variance": 2,    "min": 0.5,  "max": 12,   "weekend_factor": 1 },
+
+    "client_ad_spend":         { "baseline": 500000,"trend": -2000, "variance": 100000,"min": 200000,"max": 900000,"weekend_factor": 1 },
+    "client_ad_revenue":       { "baseline": 1200000,"trend": -8000,"variance": 250000,"min": 400000,"max": 2000000,"weekend_factor": 1 },
+    "on_time_launches":        { "baseline": 3,    "trend": -0.015, "variance": 1.5,  "min": 0,    "max": 6,    "weekend_factor": 0,   "integer": true },
+    "total_launches":          { "baseline": 4,    "trend": 0,      "variance": 1.5,  "min": 1,    "max": 7,    "weekend_factor": 0,   "integer": true },
+    "keywords_improved":       { "baseline": 35,   "trend": -0.15,  "variance": 10,   "min": 8,    "max": 60,   "weekend_factor": 1 },
+    "total_keywords_tracked":  { "baseline": 120,  "trend": 0,      "variance": 10,   "min": 80,   "max": 160,  "weekend_factor": 1 },
+    "social_engagements":      { "baseline": 2200, "trend": -8,     "variance": 600,  "min": 500,  "max": 5000, "weekend_factor": 0.7 },
+    "social_followers":        { "baseline": 45000,"trend": 20,     "variance": 500,  "min": 40000,"max": 55000, "weekend_factor": 1 },
+    "avg_cpc":                 { "baseline": 12,   "trend": 0.05,   "variance": 3,    "min": 4,    "max": 25,   "weekend_factor": 1 },
+
+    "briefs_completed":        { "baseline": 3,    "trend": -0.01,  "variance": 1.5,  "min": 0,    "max": 6,    "weekend_factor": 0,   "integer": true },
+    "briefs_total":            { "baseline": 4,    "trend": 0.005,  "variance": 1.5,  "min": 1,    "max": 7,    "weekend_factor": 0,   "integer": true },
+    "strategy_to_launch_days": { "baseline": 14,   "trend": 0.06,   "variance": 4,    "min": 5,    "max": 30,   "weekend_factor": 1 },
+
+    "total_employees":         { "baseline": 42,   "trend": -0.03,  "variance": 1,    "min": 30,   "max": 48,   "weekend_factor": 1 },
+    "employees_left":          { "baseline": 1.5,  "trend": 0.012,  "variance": 1.2,  "min": 0,    "max": 5,    "weekend_factor": 0,   "integer": true },
+    "avg_employees":           { "baseline": 41,   "trend": -0.03,  "variance": 1,    "min": 30,   "max": 48,   "weekend_factor": 1 },
+    "billable_hours":          { "baseline": 4200, "trend": -20,    "variance": 500,  "min": 2500, "max": 6000, "weekend_factor": 1 },
+    "total_hours":             { "baseline": 6700, "trend": -5,     "variance": 400,  "min": 5000, "max": 8000, "weekend_factor": 1 },
+    "direct_costs":            { "baseline": 1100000,"trend": 3000, "variance": 150000,"min": 600000,"max": 1600000,"weekend_factor": 1 },
+    "invoiced_amount":         { "baseline": 1900000,"trend": -5000,"variance": 300000,"min": 900000,"max": 2800000,"weekend_factor": 1 },
+    "collected_amount":        { "baseline": 1400000,"trend": -7000,"variance": 250000,"min": 600000,"max": 2400000,"weekend_factor": 1 },
+    "top_client_revenue":      { "baseline": 650000,"trend": 1500,  "variance": 100000,"min": 300000,"max": 1000000,"weekend_factor": 1 },
+    "training_hours":          { "baseline": 20,   "trend": -0.12,  "variance": 8,    "min": 0,    "max": 50,   "weekend_factor": 0 },
+    "unbillable_hours":        { "baseline": 2500, "trend": 15,     "variance": 400,  "min": 1500, "max": 4000, "weekend_factor": 1 }
+  },
+
+  "insights": [
+    {
+      "kpi_name": "Billable Utilization Rate",
+      "priority": "high",
+      "text": "CRITICAL: Billable utilization has dropped from 68% to 58% over 4 months. Industry benchmark is 70-75%. At current headcount of 40, every 1% drop = ~INR 1.2L/month in lost revenue. This is your #1 profit leak."
+    },
+    {
+      "kpi_name": "Revenue Concentration Risk",
+      "priority": "high",
+      "text": "DANGER: Your top client now accounts for 38% of total revenue (up from 31% four months ago). If they leave, you lose more than a third of your business overnight. Diversify immediately."
+    },
+    {
+      "kpi_name": "Creative Revision Rate",
+      "priority": "high",
+      "text": "Revision rate has climbed to 55%+ — more than half your deliverables need rework. This is burning designer hours and frustrating clients. Root cause is likely poor briefing, not poor talent."
+    },
+    {
+      "kpi_name": "Invoice Collection Rate",
+      "priority": "high",
+      "text": "Collection rate dropped below 72%. You're doing the work but not getting paid. INR 5L+ is stuck in overdue invoices. This is a cash flow emergency — you'll hit payroll trouble within 60 days."
+    },
+    {
+      "kpi_name": "Client Retention Rate",
+      "priority": "high",
+      "text": "Client retention fell from 88% to 79% in 4 months. You're losing ~1 client every 2 weeks. At your average revenue per client (INR 7-8L/month), each lost client costs INR 85-95L annually."
+    },
+    {
+      "kpi_name": "Pitch Win Rate",
+      "priority": "medium",
+      "text": "Pitch win rate is trending down from 28% to 18%. Combined with declining lead quality, your pipeline is drying up. You're spending more on BD but converting less."
+    },
+    {
+      "kpi_name": "SLA Compliance Rate",
+      "priority": "medium",
+      "text": "On-time delivery dropped from 72% to 61%. Late deliveries directly correlate with your falling NPS (now 32, was 45). Clients who receive 2+ late deliveries are 3x more likely to churn."
+    },
+    {
+      "kpi_name": "Employee Attrition Rate",
+      "priority": "medium",
+      "text": "Monthly attrition spiked to 4.2%. At a 40-person agency, losing 1-2 people/month destroys institutional knowledge. Replacing a mid-level designer costs 3-4 months salary in recruitment + ramp-up."
+    },
+    {
+      "kpi_name": "Training Investment per Employee",
+      "priority": "medium",
+      "text": "Training hours collapsed from 0.5 hrs/person/day to nearly zero. This is a vicious cycle: no training -> stale skills -> poor output -> more revisions -> less time for training. Break the cycle."
+    },
+    {
+      "kpi_name": "Bench Rate",
+      "priority": "medium",
+      "text": "Bench rate hit 40% — nearly half your capacity is unbillable. This usually means either poor project scheduling, skill mismatches, or too many internal meetings. Audit where the time goes."
+    },
+    {
+      "kpi_name": "Asset Reuse Rate",
+      "priority": "low",
+      "text": "Only 18% of assets are reused — your team is recreating from scratch every time. Building a shared asset library could save 15-20 designer hours per week. Quick win."
+    },
+    {
+      "kpi_name": "Social Engagement Rate",
+      "priority": "low",
+      "text": "Client social engagement is declining while follower count grows. Vanity metrics look fine but actual engagement dropped 22%. Algorithms are punishing low-quality content."
+    },
+    {
+      "kpi_name": "Gross Profit Margin",
+      "priority": "high",
+      "text": "Gross margin compressed from 42% to 34%. Direct costs are rising while revenue declines. At this trajectory, you'll be unprofitable within 2 months. Cut scope creep and renegotiate underpriced retainers."
+    }
+  ]
+}
