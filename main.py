@@ -30,6 +30,8 @@ from app.api.routes.data_fields import router as data_fields_router
 from app.api.routes.integrations import router as integrations_router
 from app.api.routes.admin import router as admin_router
 from app.api.routes.subscriptions import router as subscriptions_router
+from app.api.routes.superadmin import router as superadmin_router
+from app.api.routes.notifications import router as notifications_router
 
 # Configure logging
 logging.basicConfig(
@@ -187,6 +189,8 @@ app.include_router(data_fields_router, prefix="/api")
 app.include_router(integrations_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(subscriptions_router, prefix="/api")
+app.include_router(superadmin_router, prefix="/api")
+app.include_router(notifications_router, prefix="/api")
 
 
 @app.get("/")

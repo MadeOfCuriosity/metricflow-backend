@@ -7,8 +7,13 @@ from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.core.security import verify_token, is_token_blacklisted
-from app.models import User, Organization, UserRoomAssignment
+from app.core.security import (
+    verify_token,
+    is_token_blacklisted,
+    TOKEN_TYPE_ACCESS,
+    TOKEN_TYPE_SUPERADMIN,
+)
+from app.models import User, Organization, UserRoomAssignment, SuperAdmin
 from app.models.room import Room
 
 
@@ -40,7 +45,7 @@ def get_current_user(
     )
 
     token = credentials.credentials
-    payload = verify_token(token)
+    payload = verify_token(token, expected_type=TOKEN_TYPE_ACCESS)
 
     if payload is None:
         raise credentials_exception
@@ -115,6 +120,36 @@ def require_admin_org(
         )
 
     return current_user, org
+
+
+def require_superadmin(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+) -> SuperAdmin:
+    """Dependency that validates a super-administrator token and returns the admin row."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate superadmin credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    payload = verify_token(credentials.credentials, expected_type=TOKEN_TYPE_SUPERADMIN)
+    if payload is None:
+        raise credentials_exception
+
+    sub = payload.get("sub")
+    if sub is None:
+        raise credentials_exception
+
+    try:
+        admin = db.query(SuperAdmin).filter(SuperAdmin.id == UUID(sub)).first()
+    except (ValueError, JWTError):
+        raise credentials_exception
+
+    if admin is None or not admin.is_active:
+        raise credentials_exception
+
+    return admin
 
 
 def check_room_access(

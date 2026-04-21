@@ -18,6 +18,13 @@ from app.models.integration_field_mapping import IntegrationFieldMapping
 from app.models.sync_log import SyncLog
 from app.models.subscription import Subscription
 from app.models.webhook_event import WebhookEvent
+from app.models.superadmin import SuperAdmin
+from app.models.audit_log import SuperAdminAuditLog
+from app.models.notification import (
+    NotificationCampaign,
+    NotificationCampaignOrg,
+    NotificationDismissal,
+)
 
 __all__ = [
     "Organization",
@@ -41,4 +48,9 @@ __all__ = [
     "SyncLog",
     "Subscription",
     "WebhookEvent",
+    "SuperAdmin",
+    "SuperAdminAuditLog",
+    "NotificationCampaign",
+    "NotificationCampaignOrg",
+    "NotificationDismissal",
 ]

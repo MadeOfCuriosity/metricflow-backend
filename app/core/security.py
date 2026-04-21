@@ -17,6 +17,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 TOKEN_TYPE_ACCESS = "access"
 TOKEN_TYPE_REFRESH = "refresh"
 TOKEN_TYPE_SETUP = "google_setup"
+TOKEN_TYPE_SUPERADMIN = "superadmin_access"
+
+# Superadmin token expiry (longer — platform admins hold long sessions)
+SUPERADMIN_TOKEN_EXPIRE_HOURS = 12
 
 # Refresh token expiration (longer than access token)
 REFRESH_TOKEN_EXPIRE_DAYS = 7
@@ -228,6 +232,44 @@ def verify_google_id_token(credential: str, client_id: str) -> Optional[dict]:
         return idinfo
     except ValueError:
         return None
+
+
+def create_superadmin_token(superadmin_id: str, email: str) -> str:
+    """Issue a JWT for a platform super-administrator session."""
+    to_encode = {
+        "sub": str(superadmin_id),
+        "email": email,
+        "type": TOKEN_TYPE_SUPERADMIN,
+        "exp": datetime.utcnow() + timedelta(hours=SUPERADMIN_TOKEN_EXPIRE_HOURS),
+        "jti": str(uuid4()),
+    }
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def create_impersonation_token(
+    user_id: str,
+    org_id: str,
+    superadmin_id: str,
+    superadmin_email: str,
+) -> tuple[str, datetime]:
+    """Issue a short-lived org-user access token for impersonation.
+
+    Uses ``type=access`` so existing org routes accept it, plus ``imp_by`` and
+    ``imp_email`` claims so downstream consumers can detect impersonation.
+    Returns (token, expires_at).
+    """
+    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode = {
+        "sub": str(user_id),
+        "org_id": str(org_id),
+        "type": TOKEN_TYPE_ACCESS,
+        "exp": expire,
+        "jti": str(uuid4()),
+        "imp_by": str(superadmin_id),
+        "imp_email": superadmin_email,
+    }
+    token = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return token, expire
 
 
 def create_google_setup_token(google_data: dict) -> str:

@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     # Comma-separated mapping of plan_code:razorpay_plan_id, e.g.
     # "starter:plan_ABC,pro:plan_XYZ,enterprise:plan_DEF"
     RAZORPAY_PLAN_IDS: str = ""
+    # Comma-separated plan_code:monthly_price (in rupees/base units), e.g.
+    # "starter:999,pro:2999,enterprise:9999". Used for MRR calculation in superadmin.
+    RAZORPAY_PLAN_PRICES: str = ""
 
     def razorpay_plan_map(self) -> dict[str, str]:
         out: dict[str, str] = {}
@@ -104,6 +107,19 @@ class Settings(BaseSettings):
                 continue
             code, plan_id = pair.split(":", 1)
             out[code.strip()] = plan_id.strip()
+        return out
+
+    def razorpay_plan_prices(self) -> dict[str, float]:
+        out: dict[str, float] = {}
+        for pair in (self.RAZORPAY_PLAN_PRICES or "").split(","):
+            pair = pair.strip()
+            if not pair or ":" not in pair:
+                continue
+            code, price = pair.split(":", 1)
+            try:
+                out[code.strip()] = float(price.strip())
+            except ValueError:
+                continue
         return out
 
     class Config:

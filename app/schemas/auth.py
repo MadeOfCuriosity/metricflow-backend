@@ -16,6 +16,7 @@ class RegisterOrgRequest(BaseModel):
     admin_email: EmailStr
     admin_password: str = Field(..., min_length=8, max_length=128)
     industry: Optional[str] = Field(None, max_length=100)
+    website: Optional[str] = Field(None, max_length=255)
 
 
 class LoginRequest(BaseModel):
@@ -36,6 +37,7 @@ class OrganizationResponse(BaseModel):
     id: UUID
     name: str
     industry: Optional[str]
+    website: Optional[str] = None
     created_at: datetime
     plan_code: Optional[str] = None
     plan_status: Optional[str] = None

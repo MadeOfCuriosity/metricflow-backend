@@ -72,9 +72,14 @@ class AuthService:
         return user
 
     @staticmethod
-    def create_organization(db: Session, name: str, industry: Optional[str] = None) -> Organization:
+    def create_organization(
+        db: Session,
+        name: str,
+        industry: Optional[str] = None,
+        website: Optional[str] = None,
+    ) -> Organization:
         """Create a new organization."""
-        org = Organization(name=name, industry=industry)
+        org = Organization(name=name, industry=industry, website=website)
         db.add(org)
         db.flush()  # Get the ID without committing
         return org
@@ -119,7 +124,9 @@ class AuthService:
             raise ValueError("Email already registered")
 
         # Create organization
-        org = AuthService.create_organization(db, data.org_name, data.industry)
+        org = AuthService.create_organization(
+            db, data.org_name, data.industry, getattr(data, "website", None)
+        )
 
         # Create admin user
         user = AuthService.create_user(
