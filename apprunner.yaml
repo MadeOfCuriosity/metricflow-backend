@@ -14,7 +14,7 @@ run:
     - name: ENVIRONMENT
       value: "production"
     - name: FRONTEND_URL
-      value: "https://main.d33ftwd17k5p6o.amplifyapp.com"
+      value: "https://visualize.madeofcuriosity.com,https://main.d33ftwd17k5p6o.amplifyapp.com"
     # Non-secret: comma-separated plan_code:razorpay_plan_id mapping.
     # Must match what the frontend's PLAN_DISPLAY expects.
     - name: RAZORPAY_PLAN_IDS

@@ -152,7 +152,8 @@ app.add_middleware(RequestValidationMiddleware)
 app.add_middleware(SQLInjectionPreventionMiddleware)
 
 # Configure CORS with tightened settings
-allowed_origins = [settings.FRONTEND_URL]
+# FRONTEND_URL may be a single origin or comma-separated list (e.g. custom domain + Amplify default)
+allowed_origins = [o.strip() for o in (settings.FRONTEND_URL or "").split(",") if o.strip()]
 if not IS_PRODUCTION:
     # Allow localhost variations in development
     allowed_origins.extend([
