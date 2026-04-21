@@ -16,6 +16,8 @@ from app.models.kpi_data_field import KPIDataField
 from app.models.integration import Integration
 from app.models.integration_field_mapping import IntegrationFieldMapping
 from app.models.sync_log import SyncLog
+from app.models.subscription import Subscription
+from app.models.webhook_event import WebhookEvent
 
 __all__ = [
     "Organization",
@@ -37,4 +39,6 @@ __all__ = [
     "Integration",
     "IntegrationFieldMapping",
     "SyncLog",
+    "Subscription",
+    "WebhookEvent",
 ]

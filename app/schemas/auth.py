@@ -37,6 +37,9 @@ class OrganizationResponse(BaseModel):
     name: str
     industry: Optional[str]
     created_at: datetime
+    plan_code: Optional[str] = None
+    plan_status: Optional[str] = None
+    plan_current_end: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

@@ -8,7 +8,10 @@ from pydantic import BaseModel, Field
 # --- Request schemas ---
 
 class CreateIntegrationRequest(BaseModel):
-    provider: str = Field(..., pattern="^(google_sheets|zoho_crm|leadsquared)$")
+    provider: str = Field(
+        ...,
+        pattern="^(google_sheets|google_ads|ga4|meta_ads|zoho_crm|zoho_books|zoho_sheet|leadsquared)$",
+    )
     display_name: str = Field(..., min_length=1, max_length=255)
     sync_schedule: str = Field("manual", pattern="^(manual|1h|6h|12h|24h)$")
     config: dict = Field(default_factory=dict)

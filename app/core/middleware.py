@@ -47,9 +47,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "usb=()"
         )
 
-        # Strict Transport Security (HSTS) - only in production
-        # Uncomment when using HTTPS
-        # response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # Strict Transport Security (HSTS) - HTTPS only
+        import os
+        if os.getenv("ENVIRONMENT", "development") == "production":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains; preload"
+            )
 
         # Cache control for API responses
         if request.url.path.startswith("/api/"):

@@ -16,6 +16,12 @@ class Organization(Base):
     industry = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    # Active plan — mirrored from the latest active Subscription so entitlements
+    # can be checked without a join on every request.
+    plan_code = Column(String(50), nullable=True)
+    plan_status = Column(String(30), nullable=True)  # active | past_due | cancelled | trialing | None
+    plan_current_end = Column(DateTime, nullable=True)
+
     # Relationships
     users = relationship("User", back_populates="organization", cascade="all, delete-orphan")
     kpi_definitions = relationship("KPIDefinition", back_populates="organization", cascade="all, delete-orphan")
@@ -25,6 +31,7 @@ class Organization(Base):
     data_fields = relationship("DataField", back_populates="organization", cascade="all, delete-orphan")
     data_field_entries = relationship("DataFieldEntry", back_populates="organization", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="organization", cascade="all, delete-orphan")
+    subscriptions = relationship("Subscription", back_populates="organization", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Organization {self.name}>"

@@ -27,6 +27,9 @@ from app.services.integration_service import IntegrationService
 from app.services.sync_service import SyncService
 from app.services.connectors import get_connector
 from app.services.connectors.google_sheets import GoogleSheetsConnector
+from app.services.connectors.google_ads import GoogleAdsConnector
+from app.services.connectors.ga4 import GA4Connector
+from app.services.connectors.meta_ads import MetaAdsConnector
 from app.services.connectors.zoho_crm import ZohoCRMConnector
 from app.services.connectors.zoho_books import ZohoBooksConnector
 from app.services.connectors.zoho_sheet import ZohoSheetConnector
@@ -223,8 +226,9 @@ def get_external_fields(
             fields=[ExternalFieldResponse(name=f.name, label=f.label, field_type=f.field_type) for f in fields],
             total=len(fields),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch fields: {str(e)}")
+    except Exception:
+        logger.exception(f"Failed to fetch fields for integration {integration_id}")
+        raise HTTPException(status_code=500, detail="Failed to fetch fields from provider.")
 
 
 # --- Field Mappings ---
@@ -261,7 +265,10 @@ def get_oauth_authorize_url(
     """Generate OAuth authorization URL."""
     user, org = admin_org
 
-    if provider not in ("google_sheets", "zoho_crm", "zoho_books", "zoho_sheet"):
+    if provider not in (
+        "google_sheets", "google_ads", "ga4", "meta_ads",
+        "zoho_crm", "zoho_books", "zoho_sheet",
+    ):
         raise HTTPException(status_code=400, detail="OAuth not supported for this provider")
 
     integration = IntegrationService.get_by_id(db, integration_id, org.id)
@@ -274,6 +281,20 @@ def get_oauth_authorize_url(
         if not settings.GOOGLE_OAUTH_CLIENT_ID:
             raise HTTPException(status_code=500, detail="Google OAuth not configured")
         authorize_url = GoogleSheetsConnector.get_authorize_url(state)
+    elif provider == "google_ads":
+        if not settings.GOOGLE_OAUTH_CLIENT_ID:
+            raise HTTPException(status_code=500, detail="Google OAuth not configured")
+        if not settings.GOOGLE_ADS_DEVELOPER_TOKEN:
+            raise HTTPException(status_code=500, detail="GOOGLE_ADS_DEVELOPER_TOKEN not configured")
+        authorize_url = GoogleAdsConnector.get_authorize_url(state)
+    elif provider == "ga4":
+        if not settings.GOOGLE_OAUTH_CLIENT_ID:
+            raise HTTPException(status_code=500, detail="Google OAuth not configured")
+        authorize_url = GA4Connector.get_authorize_url(state)
+    elif provider == "meta_ads":
+        if not settings.META_OAUTH_CLIENT_ID:
+            raise HTTPException(status_code=500, detail="Meta (Facebook) OAuth not configured")
+        authorize_url = MetaAdsConnector.get_authorize_url(state)
     elif provider == "zoho_crm":
         if not settings.ZOHO_OAUTH_CLIENT_ID:
             raise HTTPException(status_code=500, detail="Zoho OAuth not configured")
@@ -319,6 +340,12 @@ def oauth_callback(
     try:
         if provider == "google_sheets":
             tokens = GoogleSheetsConnector.exchange_code(code)
+        elif provider == "google_ads":
+            tokens = GoogleAdsConnector.exchange_code(code)
+        elif provider == "ga4":
+            tokens = GA4Connector.exchange_code(code)
+        elif provider == "meta_ads":
+            tokens = MetaAdsConnector.exchange_code(code)
         elif provider == "zoho_crm":
             tokens = ZohoCRMConnector.exchange_code(code)
         elif provider == "zoho_books":
@@ -342,7 +369,11 @@ def oauth_callback(
         return RedirectResponse(url=redirect_url)
 
     except Exception as e:
-        logger.error(f"OAuth callback failed for {provider}: {e}")
-        IntegrationService.set_error(db, integration, f"OAuth failed: {str(e)}")
+        # Full detail server-side; generic message to the user (no stack leak)
+        logger.error(f"OAuth callback failed for {provider} (integration={integration_id}): {e}", exc_info=True)
+        IntegrationService.set_error(
+            db, integration,
+            "OAuth authorization failed. Please try connecting again.",
+        )
         redirect_url = f"{settings.FRONTEND_URL}/integrations?error=oauth_failed&provider={provider}"
         return RedirectResponse(url=redirect_url)

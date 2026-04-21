@@ -29,6 +29,7 @@ from app.api.routes.users import router as users_router
 from app.api.routes.data_fields import router as data_fields_router
 from app.api.routes.integrations import router as integrations_router
 from app.api.routes.admin import router as admin_router
+from app.api.routes.subscriptions import router as subscriptions_router
 
 # Configure logging
 logging.basicConfig(
@@ -60,9 +61,16 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting MetricFlow API...")
 
-    # Validate required secrets (warn but don't crash — App Runner rolls back config on failure)
+    # Validate required secrets — hard-fail in production, warn in dev
     config_errors = settings.validate_required_secrets()
     if config_errors:
+        if IS_PRODUCTION:
+            for err in config_errors:
+                logger.critical(f"Configuration error: {err}")
+            raise RuntimeError(
+                "Production startup aborted due to invalid configuration: "
+                + "; ".join(config_errors)
+            )
         for err in config_errors:
             logger.warning(f"Configuration warning: {err}")
 
@@ -178,6 +186,7 @@ app.include_router(users_router, prefix="/api")
 app.include_router(data_fields_router, prefix="/api")
 app.include_router(integrations_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
+app.include_router(subscriptions_router, prefix="/api")
 
 
 @app.get("/")

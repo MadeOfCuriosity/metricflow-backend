@@ -45,12 +45,41 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT == "production":
             if not self.ENCRYPTION_KEY:
                 errors.append("ENCRYPTION_KEY must be set in production")
+            # Block startup with placeholder SECRET_KEY shipped in .env.example
+            if "change-in-production" in (self.SECRET_KEY or "").lower():
+                errors.append(
+                    "SECRET_KEY is still set to the .env.example placeholder — "
+                    "generate a new one with `openssl rand -hex 32`"
+                )
+            if not self.RAZORPAY_KEY_ID or not self.RAZORPAY_KEY_SECRET:
+                errors.append("RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in production")
+            if not self.RAZORPAY_WEBHOOK_SECRET:
+                errors.append(
+                    "RAZORPAY_WEBHOOK_SECRET must be set in production — "
+                    "webhook signature verification will fail without it"
+                )
+            if self.RAZORPAY_KEY_ID and self.RAZORPAY_KEY_ID.startswith("rzp_test_"):
+                errors.append(
+                    "RAZORPAY_KEY_ID is a test key (rzp_test_*) — switch to rzp_live_* in production"
+                )
         return errors
 
-    # Google Sheets OAuth
+    # Google OAuth — shared client for Sheets, Google Ads, and GA4
+    # (same Google Cloud project; scopes differ per connector)
     GOOGLE_OAUTH_CLIENT_ID: Optional[str] = None
     GOOGLE_OAUTH_CLIENT_SECRET: Optional[str] = None
     GOOGLE_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/integrations/oauth/google_sheets/callback"
+    GOOGLE_ADS_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/integrations/oauth/google_ads/callback"
+    GA4_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/integrations/oauth/ga4/callback"
+
+    # Google Ads developer token (from Google Ads Manager > API Center)
+    GOOGLE_ADS_DEVELOPER_TOKEN: Optional[str] = None
+
+    # Meta (Facebook) Ads OAuth
+    META_OAUTH_CLIENT_ID: Optional[str] = None
+    META_OAUTH_CLIENT_SECRET: Optional[str] = None
+    META_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/integrations/oauth/meta_ads/callback"
+    META_API_VERSION: str = "v19.0"
 
     # Zoho OAuth (shared credentials for CRM + Books)
     ZOHO_OAUTH_CLIENT_ID: Optional[str] = None
@@ -58,6 +87,24 @@ class Settings(BaseSettings):
     ZOHO_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/integrations/oauth/zoho_crm/callback"
     ZOHO_BOOKS_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/integrations/oauth/zoho_books/callback"
     ZOHO_SHEET_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/integrations/oauth/zoho_sheet/callback"
+
+    # Razorpay
+    RAZORPAY_KEY_ID: Optional[str] = None
+    RAZORPAY_KEY_SECRET: Optional[str] = None
+    RAZORPAY_WEBHOOK_SECRET: Optional[str] = None
+    # Comma-separated mapping of plan_code:razorpay_plan_id, e.g.
+    # "starter:plan_ABC,pro:plan_XYZ,enterprise:plan_DEF"
+    RAZORPAY_PLAN_IDS: str = ""
+
+    def razorpay_plan_map(self) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for pair in (self.RAZORPAY_PLAN_IDS or "").split(","):
+            pair = pair.strip()
+            if not pair or ":" not in pair:
+                continue
+            code, plan_id = pair.split(":", 1)
+            out[code.strip()] = plan_id.strip()
+        return out
 
     class Config:
         env_file = ".env"
