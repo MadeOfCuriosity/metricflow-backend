@@ -163,3 +163,28 @@ class SystemHealthResponse(BaseModel):
     webhooks: HealthWebhookSummary
     syncs: HealthSyncSummary
     ai_usage: HealthAIUsage
+
+
+# --- Manual plan grant (comp accounts, beta testers) ---
+
+class GrantPlanRequest(BaseModel):
+    plan_code: str = Field(..., min_length=1, max_length=50)
+    duration_days: int = Field(..., ge=1, le=3650)
+    reason: Optional[str] = Field(default=None, max_length=500)
+
+
+class RevokePlanRequest(BaseModel):
+    reason: Optional[str] = Field(default=None, max_length=500)
+
+
+class GrantPlanResponse(BaseModel):
+    id: UUID
+    org_id: UUID
+    plan_code: str
+    status: str
+    current_start: Optional[datetime] = None
+    current_end: Optional[datetime] = None
+    razorpay_subscription_id: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

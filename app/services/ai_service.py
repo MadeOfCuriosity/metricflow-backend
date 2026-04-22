@@ -83,7 +83,7 @@ class ConversationMessage:
 class AIService:
     """Service for AI-powered KPI building assistance."""
 
-    GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
     @classmethod
     def _get_api_key(cls) -> str:
@@ -205,9 +205,10 @@ class AIService:
             payload = {
                 "contents": contents,
                 "generationConfig": {
-                    "maxOutputTokens": 1024,
+                    "maxOutputTokens": 4096,
                     "temperature": 0.7,
                     "topP": 0.9,
+                    "thinkingConfig": {"thinkingBudget": 0},
                 }
             }
 

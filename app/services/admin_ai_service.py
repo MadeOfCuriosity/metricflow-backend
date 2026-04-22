@@ -56,7 +56,7 @@ class ConversationMessage:
 class AdminAIService:
     """Service for admin AI assistant with full org data context."""
 
-    GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
     @classmethod
     def _build_org_context(cls, db: Session, org_id: UUID) -> str:
@@ -238,9 +238,10 @@ class AdminAIService:
             payload = {
                 "contents": contents,
                 "generationConfig": {
-                    "maxOutputTokens": 2048,
+                    "maxOutputTokens": 4096,
                     "temperature": 0.7,
                     "topP": 0.9,
+                    "thinkingConfig": {"thinkingBudget": 0},
                 }
             }
 

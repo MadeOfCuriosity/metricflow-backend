@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import or_, func
@@ -25,6 +25,12 @@ from app.models import (
     KPIDefinition,
     DataEntry,
     NotificationCampaign,
+    SalesLead,
+)
+from app.schemas.sales_lead import (
+    SalesLeadResponse,
+    SalesLeadListResponse,
+    SalesLeadUpdate,
 )
 from app.schemas.superadmin import (
     SuperAdminGoogleAuthRequest,
@@ -57,6 +63,9 @@ from app.schemas.superadmin_phase2 import (
     IndustryMetrics,
     IndustriesResponse,
     SystemHealthResponse,
+    GrantPlanRequest,
+    RevokePlanRequest,
+    GrantPlanResponse,
 )
 from app.services.superadmin_service import (
     SuperAdminAuthService,
@@ -346,6 +355,152 @@ def list_all_subscriptions(
         for s, org_name in rows
     ]
     return GlobalSubscriptionListResponse(items=items, total=total)
+
+
+# ---------------- Manual plan grants (comp accounts, beta testers) ----------------
+
+MANUAL_SUB_PREFIX = "manual_"
+
+
+@router.post(
+    "/organizations/{org_id}/grant-plan",
+    response_model=GrantPlanResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def grant_plan(
+    org_id: UUID,
+    data: GrantPlanRequest,
+    request: Request,
+    admin: SuperAdmin = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Manually grant a subscription plan to an organization without payment.
+
+    Creates a synthetic Subscription record (flagged via ``razorpay_subscription_id``
+    prefix ``manual_``) and mirrors the active plan onto the Organization so
+    normal entitlement checks apply.
+    """
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    now = datetime.utcnow()
+    current_end = now + timedelta(days=data.duration_days)
+
+    sub = Subscription(
+        org_id=org_id,
+        plan_code=data.plan_code,
+        razorpay_plan_id=f"{MANUAL_SUB_PREFIX}{data.plan_code}",
+        razorpay_subscription_id=f"{MANUAL_SUB_PREFIX}{uuid4().hex}",
+        status="active",
+        paid_count=0,
+        total_count=None,
+        current_start=now,
+        current_end=current_end,
+    )
+    db.add(sub)
+    db.commit()
+    db.refresh(sub)
+
+    # Mirror onto the organization so entitlement checks pick it up.
+    org.plan_code = data.plan_code
+    org.plan_status = "active"
+    org.plan_current_end = current_end
+    db.commit()
+    db.refresh(sub)
+
+    log_action(
+        db,
+        admin,
+        "plan_granted",
+        target_type="organization",
+        target_id=org_id,
+        details={
+            "org_name": org.name,
+            "plan_code": data.plan_code,
+            "duration_days": data.duration_days,
+            "current_end": current_end.isoformat(),
+            "reason": data.reason,
+            "subscription_id": str(sub.id),
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+    return GrantPlanResponse.model_validate(sub)
+
+
+@router.post(
+    "/organizations/{org_id}/revoke-plan",
+    response_model=GrantPlanResponse,
+)
+def revoke_plan(
+    org_id: UUID,
+    data: RevokePlanRequest,
+    request: Request,
+    admin: SuperAdmin = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Revoke an active manually-granted plan for an organization.
+
+    Only cancels manual subscriptions — Razorpay-backed subscriptions must be
+    cancelled through the normal billing flow to keep local state in sync with
+    Razorpay.
+    """
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    sub = (
+        db.query(Subscription)
+        .filter(
+            Subscription.org_id == org_id,
+            Subscription.status == "active",
+            Subscription.razorpay_subscription_id.like(f"{MANUAL_SUB_PREFIX}%"),
+        )
+        .order_by(Subscription.created_at.desc())
+        .first()
+    )
+    if sub is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No active manually-granted plan found for this organization",
+        )
+
+    now = datetime.utcnow()
+    sub.status = "cancelled"
+    sub.ended_at = now
+    org.plan_code = None
+    org.plan_status = "cancelled"
+    org.plan_current_end = now
+    db.commit()
+    db.refresh(sub)
+
+    log_action(
+        db,
+        admin,
+        "plan_revoked",
+        target_type="organization",
+        target_id=org_id,
+        details={
+            "org_name": org.name,
+            "plan_code": sub.plan_code,
+            "reason": data.reason,
+            "subscription_id": str(sub.id),
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+    return GrantPlanResponse.model_validate(sub)
+
+
+@router.get("/plans", response_model=list[dict])
+def list_available_plans(
+    admin: SuperAdmin = Depends(require_superadmin),
+):
+    """Return the plan codes configured via RAZORPAY_PLAN_IDS for grant dropdowns."""
+    from app.services.razorpay_service import RazorpayService
+    try:
+        return RazorpayService.list_plans()
+    except Exception:
+        return []
 
 
 # ---------------- Admin management (manage superadmin allow-list) ----------------
@@ -766,3 +921,94 @@ def system_health(
     db: Session = Depends(get_db),
 ):
     return SystemHealthService.get_health(db)
+
+
+# ---------------- Sales leads (inbound contact forms) ----------------
+
+@router.get("/leads", response_model=SalesLeadListResponse)
+def list_sales_leads(
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    q: Optional[str] = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    admin: SuperAdmin = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    query = db.query(SalesLead)
+    if status_filter:
+        query = query.filter(SalesLead.status == status_filter)
+    if q:
+        like = f"%{q.lower()}%"
+        query = query.filter(
+            or_(
+                func.lower(SalesLead.email).like(like),
+                func.lower(SalesLead.name).like(like),
+                func.lower(SalesLead.company).like(like),
+            )
+        )
+    total = query.count()
+    rows = (
+        query.order_by(SalesLead.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    return SalesLeadListResponse(
+        items=[SalesLeadResponse.model_validate(r) for r in rows],
+        total=total,
+    )
+
+
+@router.patch("/leads/{lead_id}", response_model=SalesLeadResponse)
+def update_sales_lead(
+    lead_id: UUID,
+    data: SalesLeadUpdate,
+    admin: SuperAdmin = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    lead = db.query(SalesLead).filter(SalesLead.id == lead_id).first()
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    if data.status is not None:
+        lead.status = data.status
+    if data.notes is not None:
+        lead.notes = data.notes
+    db.commit()
+    db.refresh(lead)
+
+    log_action(
+        db,
+        admin,
+        "lead_updated",
+        target_type="sales_lead",
+        target_id=lead_id,
+        details={
+            "email": lead.email,
+            "status": lead.status,
+        },
+    )
+    return SalesLeadResponse.model_validate(lead)
+
+
+@router.delete("/leads/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_sales_lead(
+    lead_id: UUID,
+    admin: SuperAdmin = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    lead = db.query(SalesLead).filter(SalesLead.id == lead_id).first()
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    email = lead.email
+    db.delete(lead)
+    db.commit()
+    log_action(
+        db,
+        admin,
+        "lead_deleted",
+        target_type="sales_lead",
+        target_id=lead_id,
+        details={"email": email},
+    )
+    return None

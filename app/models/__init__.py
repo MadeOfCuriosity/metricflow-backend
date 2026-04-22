@@ -25,6 +25,7 @@ from app.models.notification import (
     NotificationCampaignOrg,
     NotificationDismissal,
 )
+from app.models.sales_lead import SalesLead
 
 __all__ = [
     "Organization",
@@ -53,4 +54,5 @@ __all__ = [
     "NotificationCampaign",
     "NotificationCampaignOrg",
     "NotificationDismissal",
+    "SalesLead",
 ]
