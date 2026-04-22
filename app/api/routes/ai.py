@@ -190,15 +190,14 @@ async def admin_agent(
         for msg in data.conversation_history
     ]
 
-    # Check if Gemini API is configured
     if not settings.GEMINI_API_KEY:
-        response = AdminAIService.generate_response_mock(
-            db, org.id, history, data.user_message
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI assistant is not configured. Set GEMINI_API_KEY on the backend.",
         )
-    else:
-        response = await AdminAIService.generate_response(
-            db, org.id, history, data.user_message
-        )
+    response = await AdminAIService.generate_response(
+        db, org.id, history, data.user_message
+    )
 
     return AdminAgentResponse(
         ai_response=response.text,
