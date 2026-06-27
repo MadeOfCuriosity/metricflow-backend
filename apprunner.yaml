@@ -32,3 +32,5 @@ run:
       value-from: "arn:aws:secretsmanager:us-east-2:170690344518:secret:metricflow/razorpay-key-secret-KAxZof"
     - name: RAZORPAY_WEBHOOK_SECRET
       value-from: "arn:aws:secretsmanager:us-east-2:170690344518:secret:metricflow/razorpay-webhook-secret-oTBSfj"
+    - name: GEMINI_API_KEY
+      value-from: "arn:aws:secretsmanager:us-east-2:170690344518:secret:metricflow/gemini-api-key-n57b3C"
