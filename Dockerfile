@@ -22,6 +22,7 @@ COPY ./alembic ./alembic
 COPY ./alembic.ini .
 COPY ./main.py .
 COPY ./start.sh .
+COPY ./scripts/run_migrations.py ./scripts/run_migrations.py
 
 # Change ownership to non-root user
 RUN chown -R appuser:appuser /app

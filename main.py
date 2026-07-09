@@ -42,22 +42,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_migrations():
-    """Run database migrations on startup."""
-    try:
-        from alembic.config import Config
-        from alembic import command
-
-        logger.info("Running database migrations...")
-        alembic_cfg = Config("alembic.ini")
-        command.upgrade(alembic_cfg, "head")
-        logger.info("Database migrations completed successfully")
-    except Exception as e:
-        logger.error(f"Failed to run migrations: {e}")
-        # Don't fail startup, migrations might already be applied
-        pass
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
@@ -77,9 +61,9 @@ async def lifespan(app: FastAPI):
         for err in config_errors:
             logger.warning(f"Configuration warning: {err}")
 
-    # Run migrations in production
-    if IS_PRODUCTION:
-        run_migrations()
+    # Migrations run in start.sh (scripts/run_migrations.py) before the app
+    # boots, under an advisory lock — not here, to avoid every uvicorn
+    # worker (and every App Runner instance) racing to migrate concurrently.
 
     # Start integration sync scheduler
     from app.core.scheduler import start_scheduler, shutdown_scheduler
