@@ -22,8 +22,19 @@ class InsightGenerator:
     # Thresholds
     DEVIATION_THRESHOLD = 0.20  # 20% deviation from average
     CONSECUTIVE_TREND_DAYS = 4  # Days for trend detection
-    MISSING_DATA_DAYS = 3  # Days without data
+    MISSING_DATA_DAYS = 3  # Days without data (daily-cadence KPIs)
     STD_DEV_THRESHOLD = 1.5  # Standard deviations for anomaly
+
+    # Missing-data threshold scaled to how often a KPI is expected to be
+    # updated — a monthly KPI isn't "stale" just because it's day 4 of the
+    # month, so daily's threshold can't apply across the board.
+    MISSING_DATA_DAYS_BY_PERIOD = {
+        "daily": 3,
+        "weekly": 10,
+        "monthly": 45,
+        "quarterly": 100,
+        "other": 3,
+    }
 
     @staticmethod
     def generate_insights(db: Session, org_id: UUID) -> list[Insight]:
@@ -238,8 +249,12 @@ class InsightGenerator:
             )
 
         days_since_entry = (date.today() - last_entry_date).days
+        period_value = getattr(kpi.time_period, "value", kpi.time_period)
+        threshold = InsightGenerator.MISSING_DATA_DAYS_BY_PERIOD.get(
+            period_value, InsightGenerator.MISSING_DATA_DAYS
+        )
 
-        if days_since_entry >= InsightGenerator.MISSING_DATA_DAYS:
+        if days_since_entry >= threshold:
             return Insight(
                 org_id=org_id,
                 kpi_id=kpi.id,

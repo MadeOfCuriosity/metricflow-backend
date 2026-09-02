@@ -99,7 +99,9 @@ class TestAuthEndpoints:
         """Test that unauthenticated request fails."""
         response = client.get("/api/auth/me")
 
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        # FastAPI's HTTPBearer returns 403 for a missing Authorization header
+        # and 401 only for a present-but-invalid one.
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_get_current_user_invalid_token(self, client):
         """Test that invalid token fails."""

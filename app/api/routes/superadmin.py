@@ -27,6 +27,7 @@ from app.models import (
     NotificationCampaign,
     SalesLead,
 )
+from app.schemas.apps import AppInstallationResponse, SetEntitlementRequest
 from app.schemas.sales_lead import (
     SalesLeadResponse,
     SalesLeadListResponse,
@@ -1012,3 +1013,50 @@ def delete_sales_lead(
         details={"email": email},
     )
     return None
+
+
+# ---------------- App/Extensions entitlement (manual grant, no billing plumbing) ----------------
+
+@router.post(
+    "/organizations/{org_id}/apps/{app_key}/entitlement",
+    response_model=AppInstallationResponse,
+)
+def set_app_entitlement(
+    org_id: UUID,
+    app_key: str,
+    data: SetEntitlementRequest,
+    request: Request,
+    admin: SuperAdmin = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Manually set an org's entitlement status for an installed app.
+
+    Entitlement for apps is superadmin-set only today — there is no per-app
+    Razorpay billing yet. This just flips the gate that AppInstallationService
+    checks before an app can be enabled.
+    """
+    from app.services.app_installation_service import AppInstallationService, AppInstallationError
+
+    installation = AppInstallationService.get_by_key(db, org_id, app_key)
+    if installation is None:
+        raise HTTPException(status_code=404, detail=f"{app_key} is not installed for this organization")
+
+    try:
+        installation = AppInstallationService.set_entitlement(db, installation, data.entitlement_status)
+    except AppInstallationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    log_action(
+        db,
+        admin,
+        "app_entitlement_set",
+        target_type="org_app_installation",
+        target_id=installation.id,
+        details={
+            "org_id": str(org_id),
+            "app_key": app_key,
+            "entitlement_status": data.entitlement_status,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+    return AppInstallationResponse.model_validate(installation)

@@ -26,6 +26,11 @@ from app.models.notification import (
     NotificationDismissal,
 )
 from app.models.sales_lead import SalesLead
+from app.models.org_app_installation import OrgAppInstallation
+from app.models.app_run_record import AppRunRecord
+from app.models.whatsapp_recipient import WhatsAppRecipient
+from app.models.whatsapp_suppression import WhatsAppSuppression
+from app.models.whatsapp_send_log import WhatsAppSendLog
 
 __all__ = [
     "Organization",
@@ -55,4 +60,9 @@ __all__ = [
     "NotificationCampaignOrg",
     "NotificationDismissal",
     "SalesLead",
+    "OrgAppInstallation",
+    "AppRunRecord",
+    "WhatsAppRecipient",
+    "WhatsAppSuppression",
+    "WhatsAppSendLog",
 ]

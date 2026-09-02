@@ -10,9 +10,9 @@ from app.services.connectors.base import BaseConnector, ExternalField
 
 logger = logging.getLogger(__name__)
 
-ZOHO_AUTH_URI = "https://accounts.zoho.com/oauth/v2/auth"
-ZOHO_TOKEN_URI = "https://accounts.zoho.com/oauth/v2/token"
-ZOHO_SHEET_API_BASE = "https://sheet.zoho.com/api/v2"
+ZOHO_AUTH_URI = f"https://accounts.zoho.{settings.ZOHO_DC}/oauth/v2/auth"
+ZOHO_TOKEN_URI = f"https://accounts.zoho.{settings.ZOHO_DC}/oauth/v2/token"
+ZOHO_SHEET_API_BASE = f"https://sheet.zoho.{settings.ZOHO_DC}/api/v2"
 ZOHO_SHEET_SCOPES = "ZohoSheet.dataAPI.READ"
 
 DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%Y/%m/%d"]

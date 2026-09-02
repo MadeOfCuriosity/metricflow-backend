@@ -33,6 +33,7 @@ class Organization(Base):
     data_field_entries = relationship("DataFieldEntry", back_populates="organization", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="organization", cascade="all, delete-orphan")
     subscriptions = relationship("Subscription", back_populates="organization", cascade="all, delete-orphan")
+    app_installations = relationship("OrgAppInstallation", back_populates="organization", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Organization {self.name}>"

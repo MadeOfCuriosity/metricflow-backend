@@ -15,12 +15,21 @@ def start_scheduler():
     """Start the scheduler and load existing integration sync jobs."""
     from app.core.database import SessionLocal
     from app.services.sync_service import SyncService
+    from app.services.app_scheduler import load_all_scheduled_app_jobs
 
     db = SessionLocal()
     try:
         SyncService.load_all_scheduled_jobs(db, scheduler)
     except Exception as e:
         logger.error(f"Failed to load scheduled sync jobs: {e}")
+    finally:
+        db.close()
+
+    db = SessionLocal()
+    try:
+        load_all_scheduled_app_jobs(db, scheduler)
+    except Exception as e:
+        logger.error(f"Failed to load scheduled app jobs: {e}")
     finally:
         db.close()
 

@@ -120,7 +120,7 @@ def test_org_data():
     return {
         "org_name": "Test Company",
         "admin_email": "admin@test.com",
-        "admin_password": "testpassword123",
+        "admin_password": "TestPassword123",
         "admin_name": "Test Admin",
     }
 
@@ -130,5 +130,5 @@ def test_user_credentials():
     """Sample user login credentials."""
     return {
         "email": "admin@test.com",
-        "password": "testpassword123",
+        "password": "TestPassword123",
     }

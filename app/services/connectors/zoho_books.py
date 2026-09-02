@@ -1,4 +1,5 @@
 import logging
+import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -11,9 +12,9 @@ from app.services.connectors.base import BaseConnector, ExternalField
 
 logger = logging.getLogger(__name__)
 
-ZOHO_AUTH_URI = "https://accounts.zoho.com/oauth/v2/auth"
-ZOHO_TOKEN_URI = "https://accounts.zoho.com/oauth/v2/token"
-ZOHO_BOOKS_API_BASE = "https://www.zohoapis.com/books/v3"
+ZOHO_AUTH_URI = f"https://accounts.zoho.{settings.ZOHO_DC}/oauth/v2/auth"
+ZOHO_TOKEN_URI = f"https://accounts.zoho.{settings.ZOHO_DC}/oauth/v2/token"
+ZOHO_BOOKS_API_BASE = f"https://www.zohoapis.{settings.ZOHO_DC}/books/v3"
 ZOHO_BOOKS_SCOPES = "ZohoBooks.fullaccess.all"
 
 ZOHO_DATE_FORMAT = "%Y-%m-%d"
@@ -29,6 +30,22 @@ BOOKS_MODULES = {
     "sales_orders": {"endpoint": "salesorders", "date_field": "date", "id_field": "salesorder_id"},
     "purchase_orders": {"endpoint": "purchaseorders", "date_field": "date", "id_field": "purchaseorder_id"},
 }
+
+# "gl_revenue" is not a document module — it attributes invoice line items to a
+# specific Chart of Accounts GL (e.g. "SMM Sales", "PM Sales"). Zoho's invoice
+# LIST endpoint doesn't expose per-line-item account_id, so this mode fetches
+# each invoice's full detail to read line_items and filters/sums by GL account.
+# Safety cap on invoice detail calls per sync — orgs with heavy invoice volume
+# would otherwise trigger hundreds of extra API calls in one run.
+GL_REVENUE_MODULE = "gl_revenue"
+MAX_GL_REVENUE_INVOICES_PER_SYNC = 1000
+
+# "gl_expense" is the same idea as gl_revenue but for costs (e.g. per-department
+# salary GLs) which post via Journal Entries, not invoices — Zoho payroll/manual
+# journals debit a department's expense account and credit a payable/bank
+# account, so this sums the debit side of line items matching gl_account_id.
+GL_EXPENSE_MODULE = "gl_expense"
+MAX_GL_EXPENSE_JOURNALS_PER_SYNC = 1000
 
 
 class ZohoBooksConnector(BaseConnector):
@@ -135,6 +152,20 @@ class ZohoBooksConnector(BaseConnector):
         """Return available fields for the configured Zoho Books module."""
         config = self.integration.config or {}
         module = config.get("module", "invoices")
+
+        if module == GL_REVENUE_MODULE:
+            # Fields come from invoice line_items, not the invoice list — fixed
+            # set, since discovering them would require a full detail fetch.
+            return [
+                ExternalField(name="item_total", label="Line Item Total", field_type="number"),
+                ExternalField(name="quantity", label="Quantity", field_type="number"),
+            ]
+
+        if module == GL_EXPENSE_MODULE:
+            return [
+                ExternalField(name="amount", label="Debit Amount", field_type="number"),
+            ]
+
         module_info = BOOKS_MODULES.get(module, BOOKS_MODULES["invoices"])
         org_id = self._get_org_id()
 
@@ -179,6 +210,269 @@ class ZohoBooksConnector(BaseConnector):
             logger.error(f"Failed to fetch Zoho Books fields: {e}")
             return self._get_default_fields(module)
 
+    def _get_detail_with_retry(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        record_id: str,
+        org_id: str,
+        response_key: str,
+        max_attempts: int = 4,
+    ) -> Optional[dict]:
+        """
+        Fetch one record's detail (invoice or journal), retrying on
+        rate-limit/transient errors.
+
+        Returns the record dict, or None only for a confirmed 404 (record
+        genuinely gone — safe to skip). Any other non-200 (429 rate limit,
+        5xx, network error) is retried with backoff; if still failing after
+        max_attempts, raises so the sync fails loudly instead of silently
+        under-counting revenue/expense as if the missing records contributed
+        zero.
+        """
+        last_error = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                resp = client.get(
+                    f"{ZOHO_BOOKS_API_BASE}/{endpoint}/{record_id}",
+                    headers=self._get_headers(),
+                    params={"organization_id": org_id},
+                )
+            except httpx.HTTPError as e:
+                last_error = str(e)
+                time.sleep(2 ** attempt)
+                continue
+
+            if resp.status_code == 200:
+                return resp.json().get(response_key, {})
+            if resp.status_code == 404:
+                return None
+
+            last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+            if attempt < max_attempts:
+                time.sleep(2 ** attempt)
+
+        raise RuntimeError(
+            f"Failed to fetch Zoho Books {response_key} {record_id} after {max_attempts} "
+            f"attempts (likely rate-limited): {last_error}"
+        )
+
+    def _fetch_gl_revenue(
+        self,
+        start_date: Optional[date],
+        end_date: Optional[date],
+    ) -> list[dict]:
+        """
+        Attribute invoice line items to the configured GL account (Chart of
+        Accounts entry, e.g. "SMM Sales"), aggregated by day.
+
+        Zoho's invoice list endpoint only gives invoice-level totals, not
+        which GL account each line item posted to — that's only on the full
+        invoice detail. So this lists invoices in range, then fetches each
+        one's detail to sum the line items matching gl_account_id.
+        """
+        config = self.integration.config or {}
+        org_id = self._get_org_id()
+        gl_account_id = config.get("gl_account_id")
+        if not gl_account_id:
+            logger.error("Zoho Books gl_revenue sync missing required 'gl_account_id' config")
+            return []
+
+        if not start_date:
+            start_date = date.today() - timedelta(days=30)
+        if not end_date:
+            end_date = date.today()
+
+        # Step 1: list invoice IDs + dates in range (cheap, paginated). Any
+        # failure here raises (via raise_for_status / the retry loop's own
+        # errors) rather than silently returning [] — a listing failure must
+        # not be mistaken for "no invoices in range."
+        invoice_stubs: list[tuple[str, date]] = []
+        page = 1
+        with httpx.Client(timeout=30) as client:
+            while True:
+                resp = client.get(
+                    f"{ZOHO_BOOKS_API_BASE}/invoices",
+                    headers=self._get_headers(),
+                    params={
+                        "organization_id": org_id,
+                        "date_start": start_date.strftime(ZOHO_DATE_FORMAT),
+                        "date_end": end_date.strftime(ZOHO_DATE_FORMAT),
+                        "page": page,
+                        "per_page": 200,
+                        "sort_column": "date",
+                        "sort_order": "A",
+                    },
+                )
+                if resp.status_code == 204:
+                    break
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") != 0:
+                    raise RuntimeError(f"Zoho Books API error listing invoices: {data.get('message')}")
+
+                for inv in data.get("invoices", []):
+                    raw_date = inv.get("date", "")
+                    try:
+                        inv_date = datetime.strptime(raw_date[:10], ZOHO_DATE_FORMAT).date()
+                    except (ValueError, TypeError):
+                        continue
+                    invoice_stubs.append((inv["invoice_id"], inv_date))
+
+                page_context = data.get("page_context", {})
+                if not page_context.get("has_more_page", False):
+                    break
+                page += 1
+                if page > 50:
+                    break
+
+        if len(invoice_stubs) > MAX_GL_REVENUE_INVOICES_PER_SYNC:
+            logger.warning(
+                f"Zoho Books gl_revenue sync: {len(invoice_stubs)} invoices in range, "
+                f"capping detail fetch at {MAX_GL_REVENUE_INVOICES_PER_SYNC} (narrow the "
+                f"date range or sync more often to cover the rest)."
+            )
+            invoice_stubs = invoice_stubs[:MAX_GL_REVENUE_INVOICES_PER_SYNC]
+
+        # Step 2: fetch each invoice's detail, sum line items matching the GL account
+        date_totals: dict[date, dict[str, float]] = defaultdict(
+            lambda: {"item_total": 0.0, "quantity": 0.0, "count": 0}
+        )
+        with httpx.Client(timeout=30) as client:
+            for i, (invoice_id, inv_date) in enumerate(invoice_stubs):
+                if i > 0:
+                    time.sleep(0.3)  # spread calls out — proactively avoid rate limits
+                detail = self._get_detail_with_retry(client, "invoices", invoice_id, org_id, "invoice")
+                if detail is None:
+                    # Only a confirmed 404 (invoice genuinely gone) reaches here —
+                    # anything else (rate limit, 5xx, network error) raises instead
+                    # of silently under-counting revenue as if it were zero.
+                    continue
+
+                for line in detail.get("line_items", []):
+                    if line.get("account_id") != gl_account_id:
+                        continue
+                    bucket = date_totals[inv_date]
+                    bucket["item_total"] += float(line.get("item_total") or 0)
+                    bucket["quantity"] += float(line.get("quantity") or 0)
+                    bucket["count"] += 1
+
+        rows = []
+        for record_date, totals in sorted(date_totals.items()):
+            rows.append({
+                "date": record_date,
+                "item_total__sum": totals["item_total"],
+                "item_total__count": totals["count"],
+                "item_total__avg": totals["item_total"] / totals["count"] if totals["count"] else 0,
+                "quantity__sum": totals["quantity"],
+                "__record_count": totals["count"],
+            })
+        return rows
+
+    def _fetch_gl_expense(
+        self,
+        start_date: Optional[date],
+        end_date: Optional[date],
+    ) -> list[dict]:
+        """
+        Attribute Journal Entry line items to the configured GL account (e.g.
+        a per-department Salary GL), aggregated by day.
+
+        Mirrors _fetch_gl_revenue but sources from /journals instead of
+        /invoices — payroll and manual journals debit an expense account and
+        credit a payable/bank account, so only the debit side is summed
+        (the credit side is the offsetting entry, not the cost itself).
+        """
+        config = self.integration.config or {}
+        org_id = self._get_org_id()
+        gl_account_id = config.get("gl_account_id")
+        if not gl_account_id:
+            logger.error("Zoho Books gl_expense sync missing required 'gl_account_id' config")
+            return []
+
+        if not start_date:
+            start_date = date.today() - timedelta(days=30)
+        if not end_date:
+            end_date = date.today()
+
+        # Step 1: list journal IDs + dates in range (cheap, paginated)
+        journal_stubs: list[tuple[str, date]] = []
+        page = 1
+        with httpx.Client(timeout=30) as client:
+            while True:
+                resp = client.get(
+                    f"{ZOHO_BOOKS_API_BASE}/journals",
+                    headers=self._get_headers(),
+                    params={
+                        "organization_id": org_id,
+                        "date_start": start_date.strftime(ZOHO_DATE_FORMAT),
+                        "date_end": end_date.strftime(ZOHO_DATE_FORMAT),
+                        "page": page,
+                        "per_page": 200,
+                        "sort_column": "journal_date",
+                        "sort_order": "A",
+                    },
+                )
+                if resp.status_code == 204:
+                    break
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") != 0:
+                    raise RuntimeError(f"Zoho Books API error listing journals: {data.get('message')}")
+
+                for j in data.get("journals", []):
+                    raw_date = j.get("journal_date", "")
+                    try:
+                        j_date = datetime.strptime(raw_date[:10], ZOHO_DATE_FORMAT).date()
+                    except (ValueError, TypeError):
+                        continue
+                    journal_stubs.append((j["journal_id"], j_date))
+
+                page_context = data.get("page_context", {})
+                if not page_context.get("has_more_page", False):
+                    break
+                page += 1
+                if page > 50:
+                    break
+
+        if len(journal_stubs) > MAX_GL_EXPENSE_JOURNALS_PER_SYNC:
+            logger.warning(
+                f"Zoho Books gl_expense sync: {len(journal_stubs)} journals in range, "
+                f"capping detail fetch at {MAX_GL_EXPENSE_JOURNALS_PER_SYNC} (narrow the "
+                f"date range or sync more often to cover the rest)."
+            )
+            journal_stubs = journal_stubs[:MAX_GL_EXPENSE_JOURNALS_PER_SYNC]
+
+        # Step 2: fetch each journal's detail, sum debit-side line items matching the GL account
+        date_totals: dict[date, dict[str, float]] = defaultdict(lambda: {"amount": 0.0, "count": 0})
+        with httpx.Client(timeout=30) as client:
+            for i, (journal_id, j_date) in enumerate(journal_stubs):
+                if i > 0:
+                    time.sleep(0.3)  # spread calls out — proactively avoid rate limits
+                detail = self._get_detail_with_retry(client, "journals", journal_id, org_id, "journal")
+                if detail is None:
+                    continue
+
+                for line in detail.get("line_items", []):
+                    if line.get("account_id") != gl_account_id:
+                        continue
+                    if line.get("debit_or_credit") != "debit":
+                        continue
+                    bucket = date_totals[j_date]
+                    bucket["amount"] += float(line.get("amount") or 0)
+                    bucket["count"] += 1
+
+        rows = []
+        for record_date, totals in sorted(date_totals.items()):
+            rows.append({
+                "date": record_date,
+                "amount__sum": totals["amount"],
+                "amount__count": totals["count"],
+                "amount__avg": totals["amount"] / totals["count"] if totals["count"] else 0,
+                "__record_count": totals["count"],
+            })
+        return rows
+
     def _get_default_fields(self, module: str) -> list[ExternalField]:
         """Return common default fields for a module."""
         common = [
@@ -209,9 +503,17 @@ class ZohoBooksConnector(BaseConnector):
         """
         config = self.integration.config or {}
         module = config.get("module", "invoices")
+
+        if module == GL_REVENUE_MODULE:
+            return self._fetch_gl_revenue(start_date, end_date)
+
+        if module == GL_EXPENSE_MODULE:
+            return self._fetch_gl_expense(start_date, end_date)
+
         module_info = BOOKS_MODULES.get(module, BOOKS_MODULES["invoices"])
         org_id = self._get_org_id()
         date_field = config.get("date_field", module_info["date_field"])
+        branch_id = config.get("branch_id")
 
         if not start_date:
             start_date = date.today() - timedelta(days=30)
@@ -233,6 +535,8 @@ class ZohoBooksConnector(BaseConnector):
                         "sort_column": date_field,
                         "sort_order": "A",
                     }
+                    if branch_id:
+                        params["branch_id"] = branch_id
 
                     resp = client.get(
                         f"{ZOHO_BOOKS_API_BASE}/{module_info['endpoint']}",

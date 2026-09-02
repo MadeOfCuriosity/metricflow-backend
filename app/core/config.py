@@ -87,6 +87,13 @@ class Settings(BaseSettings):
     ZOHO_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/integrations/oauth/zoho_crm/callback"
     ZOHO_BOOKS_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/integrations/oauth/zoho_books/callback"
     ZOHO_SHEET_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/integrations/oauth/zoho_sheet/callback"
+    # Data center the Zoho org's client ID was registered in: "com" (US/global,
+    # default), "in" (India), "eu", "com.au", "jp", "com.cn". Accounts/API/Sheet
+    # domains all key off this — accounts.zoho.com auto-redirects the initial
+    # /auth step cross-DC, but the /token exchange and API calls do not, so a
+    # client registered outside "com" needs this set or OAuth fails after the
+    # user approves ("invalid_code" / DC mismatch).
+    ZOHO_DC: str = "com"
 
     # Razorpay
     RAZORPAY_KEY_ID: Optional[str] = None

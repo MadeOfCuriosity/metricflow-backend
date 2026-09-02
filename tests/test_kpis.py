@@ -129,7 +129,11 @@ class TestKPIEndpoints:
 
     def test_seed_presets(self, client, auth_headers):
         """Test seeding preset KPIs."""
-        response = client.post("/api/kpis/seed-presets", headers=auth_headers)
+        response = client.post(
+            "/api/kpis/seed-presets",
+            json={"preset_names": ["Conversion Rate", "Average Deal Size"]},
+            headers=auth_headers,
+        )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()

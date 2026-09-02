@@ -11,9 +11,9 @@ from app.services.connectors.base import BaseConnector, ExternalField
 
 logger = logging.getLogger(__name__)
 
-ZOHO_AUTH_URI = "https://accounts.zoho.com/oauth/v2/auth"
-ZOHO_TOKEN_URI = "https://accounts.zoho.com/oauth/v2/token"
-ZOHO_API_BASE = "https://www.zohoapis.com/crm/v6"
+ZOHO_AUTH_URI = f"https://accounts.zoho.{settings.ZOHO_DC}/oauth/v2/auth"
+ZOHO_TOKEN_URI = f"https://accounts.zoho.{settings.ZOHO_DC}/oauth/v2/token"
+ZOHO_API_BASE = f"https://www.zohoapis.{settings.ZOHO_DC}/crm/v6"
 ZOHO_SCOPES = "ZohoCRM.modules.ALL,ZohoCRM.settings.ALL"
 
 # Zoho date format
